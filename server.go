@@ -2,8 +2,10 @@ package etp
 
 import (
 	"context"
+	"errors"
 	"github.com/hashicorp/go-multierror"
 	"github.com/integration-system/isp-etp-go/parser"
+	"io"
 	"net/http"
 	"nhooyr.io/websocket"
 	"sync"
@@ -13,6 +15,7 @@ type Server interface {
 	Close()
 	ServeHttp(w http.ResponseWriter, r *http.Request)
 	//OnWithAck(event string, f func(conn Conn, data []byte) string) Server
+	OnDefault(f func(event string, conn Conn, data []byte)) Server
 	On(event string, f func(conn Conn, data []byte)) Server
 	Unsubscribe(event string) Server
 	OnConnect(f func(Conn)) Server
@@ -27,6 +30,7 @@ type Server interface {
 type server struct {
 	handlers          map[string]func(conn Conn, data []byte)
 	rooms             RoomStore
+	defaultHandler    func(event string, conn Conn, data []byte)
 	connectHandler    func(conn Conn)
 	disconnectHandler func(conn Conn, err error)
 	errorHandler      func(conn Conn, err error)
@@ -89,12 +93,20 @@ func (s *server) serveRead(con Conn) {
 	defer func() {
 		err := con.Close()
 		s.rooms.Remove(con)
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				err = nil
+			}
+		}
 		s.onDisconnect(con, err)
 	}()
 
 	for {
 		_, bytes, err := con.read(s.globalCtx)
 		if err != nil {
+			if errors.Is(err, io.EOF) {
+				return
+			}
 			s.onError(con, err)
 			return
 		}
@@ -107,6 +119,8 @@ func (s *server) serveRead(con Conn) {
 		handler, ok := s.getHandler(event)
 		if ok {
 			handler(con, body)
+		} else {
+			s.onDefault(event, con, body)
 		}
 	}
 }
@@ -145,6 +159,15 @@ func (s *server) onError(conn Conn, err error) {
 	}
 }
 
+func (s *server) onDefault(event string, conn Conn, data []byte) {
+	s.handlersLock.RLock()
+	handler := s.defaultHandler
+	s.handlersLock.RUnlock()
+	if handler != nil {
+		handler(event, conn, data)
+	}
+}
+
 func (s *server) Rooms() RoomStore {
 	return s.rooms
 }
@@ -152,6 +175,14 @@ func (s *server) Rooms() RoomStore {
 func (s *server) On(event string, f func(conn Conn, data []byte)) Server {
 	s.handlersLock.Lock()
 	s.handlers[event] = f
+	s.handlersLock.Unlock()
+	return s
+}
+
+// If registered, all unknown events will be handled here.
+func (s *server) OnDefault(f func(event string, conn Conn, data []byte)) Server {
+	s.handlersLock.Lock()
+	s.defaultHandler = f
 	s.handlersLock.Unlock()
 	return s
 }
@@ -187,27 +218,27 @@ func (s *server) OnError(f func(Conn, error)) Server {
 
 // Returns go-multierror
 func (s *server) BroadcastToRoom(room string, event string, data []byte) error {
-	var errors error
+	var errs error
 	conns := s.rooms.ToBroadcast(room)
 	for _, conn := range conns {
 		err := conn.Emit(s.globalCtx, event, data)
 		if err != nil {
-			errors = multierror.Append(errors, err)
+			errs = multierror.Append(errs, err)
 		}
 	}
-	return errors
+	return errs
 }
 
 // Returns go-multierror
 func (s *server) BroadcastToAll(event string, data []byte) error {
-	var errors error
+	var errs error
 	rooms := s.rooms.Rooms()
 	conns := s.rooms.ToBroadcast(rooms...)
 	for _, conn := range conns {
 		err := conn.Emit(s.globalCtx, event, data)
 		if err != nil {
-			errors = multierror.Append(errors, err)
+			errs = multierror.Append(errs, err)
 		}
 	}
-	return errors
+	return errs
 }

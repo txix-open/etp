@@ -13,12 +13,16 @@ func main() {
 	bindAddress := "127.0.0.1:7777"
 	testEvent := "test_event"
 	helloEvent := "hello"
+	unknownEvent := "unknown"
+
 	config := etp.ServerConfig{
 		InsecureSkipVerify: true,
 	}
-	eventsServer := etp.NewServer(context.TODO(), config).
+	server := etp.NewServer(context.TODO(), config).
 		OnConnect(func(conn etp.Conn) {
 			log.Println("OnConnect", conn.ID())
+			err := conn.Emit(context.TODO(), unknownEvent, []byte("qwerty"))
+			log.Println("unknown answer err:", err)
 		}).
 		OnDisconnect(func(conn etp.Conn, err error) {
 			log.Println("OnDisconnect id", conn.ID())
@@ -43,9 +47,13 @@ func main() {
 			err := conn.Emit(context.TODO(), testEvent, []byte(answer))
 			log.Println("hello answer err:", err)
 		})
+	// used as alternative to wildcards and custom handling
+	server.OnDefault(func(event string, conn etp.Conn, data []byte) {
+		log.Printf("Received default %s:%s\n", event, string(data))
+	})
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("/isp-etp/", eventsServer.ServeHttp)
+	mux.HandleFunc("/isp-etp/", server.ServeHttp)
 	httpServer := &http.Server{Addr: bindAddress, Handler: mux}
 	go func() {
 		if err := httpServer.ListenAndServe(); err != nil {

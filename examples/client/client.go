@@ -33,6 +33,10 @@ func main() {
 	client.On(testEvent, func(data []byte) {
 		log.Printf("Received %s:%s\n", testEvent, string(data))
 	})
+	// used as alternative to wildcards and custom handling
+	client.OnDefault(func(event string, data []byte) {
+		log.Printf("Received default %s:%s\n", event, string(data))
+	})
 	err := client.Dial(context.TODO(), address)
 	if err != nil {
 		log.Fatalln("dial error:", err)

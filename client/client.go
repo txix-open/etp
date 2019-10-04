@@ -2,7 +2,9 @@ package client
 
 import (
 	"context"
+	"errors"
 	"github.com/integration-system/isp-etp-go/parser"
+	"io"
 	"nhooyr.io/websocket"
 	"sync"
 )
@@ -16,6 +18,7 @@ type Client interface {
 	Close() error
 	//OnWithAck(event string, f func(data []byte) string) Client
 	Dial(ctx context.Context, url string) error
+	OnDefault(f func(event string, data []byte)) Client
 	On(event string, f func(data []byte)) Client
 	Unsubscribe(event string) Client
 	OnConnect(f func()) Client
@@ -27,6 +30,7 @@ type Client interface {
 type client struct {
 	con               *websocket.Conn
 	handlers          map[string]func(data []byte)
+	defaultHandler    func(event string, data []byte)
 	connectHandler    func()
 	disconnectHandler func(err error)
 	errorHandler      func(err error)
@@ -83,12 +87,20 @@ func (cl *client) Dial(ctx context.Context, url string) error {
 func (cl *client) serveRead() {
 	defer func() {
 		err := cl.Close()
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				err = nil
+			}
+		}
 		cl.onDisconnect(err)
 	}()
 
 	for {
 		_, bytes, err := cl.con.Read(cl.globalCtx)
 		if err != nil {
+			if errors.Is(err, io.EOF) {
+				return
+			}
 			cl.onError(err)
 			return
 		}
@@ -101,6 +113,8 @@ func (cl *client) serveRead() {
 		handler, ok := cl.getHandler(event)
 		if ok {
 			handler(body)
+		} else {
+			cl.onDefault(event, body)
 		}
 	}
 }
@@ -139,9 +153,26 @@ func (cl *client) onError(err error) {
 	}
 }
 
+func (cl *client) onDefault(event string, data []byte) {
+	cl.handlersLock.RLock()
+	handler := cl.defaultHandler
+	cl.handlersLock.RUnlock()
+	if handler != nil {
+		handler(event, data)
+	}
+}
+
 func (cl *client) On(event string, f func(data []byte)) Client {
 	cl.handlersLock.Lock()
 	cl.handlers[event] = f
+	cl.handlersLock.Unlock()
+	return cl
+}
+
+// If registered, all unknown events will be handled here.
+func (cl *client) OnDefault(f func(event string, data []byte)) Client {
+	cl.handlersLock.Lock()
+	cl.defaultHandler = f
 	cl.handlersLock.Unlock()
 	return cl
 }
