@@ -2,10 +2,8 @@ package etp
 
 import (
 	"context"
-	"errors"
 	"github.com/hashicorp/go-multierror"
 	"github.com/integration-system/isp-etp-go/parser"
-	"io"
 	"net/http"
 	"nhooyr.io/websocket"
 	"sync"
@@ -15,11 +13,13 @@ type Server interface {
 	Close()
 	ServeHttp(w http.ResponseWriter, r *http.Request)
 	//OnWithAck(event string, f func(conn Conn, data []byte) string) Server
+	// If registered, all unknown events will be handled here.
 	OnDefault(f func(event string, conn Conn, data []byte)) Server
 	On(event string, f func(conn Conn, data []byte)) Server
 	Unsubscribe(event string) Server
 	OnConnect(f func(Conn)) Server
 	OnDisconnect(f func(Conn, error)) Server
+	// Conn may be nil if error occurs on connection upgrade or in RequestHandler.
 	OnError(f func(Conn, error)) Server
 
 	Rooms() RoomStore
@@ -91,23 +91,13 @@ func (s *server) ServeHttp(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) serveRead(con Conn) {
 	defer func() {
-		err := con.Close()
 		s.rooms.Remove(con)
-		if err != nil {
-			if errors.Is(err, io.EOF) {
-				err = nil
-			}
-		}
-		s.onDisconnect(con, err)
 	}()
 
 	for {
 		_, bytes, err := con.read(s.globalCtx)
 		if err != nil {
-			if errors.Is(err, io.EOF) {
-				return
-			}
-			s.onError(con, err)
+			s.onDisconnect(con, err)
 			return
 		}
 		event, body, err := parser.ParseData(bytes)
@@ -208,7 +198,7 @@ func (s *server) OnDisconnect(f func(Conn, error)) Server {
 	return s
 }
 
-// Conn may be nil if error occurs on connection upgrade or in RequestHandler
+// Conn may be nil if error occurs on connection upgrade or in RequestHandler.
 func (s *server) OnError(f func(Conn, error)) Server {
 	s.handlersLock.Lock()
 	s.errorHandler = f

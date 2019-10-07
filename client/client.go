@@ -2,9 +2,7 @@ package client
 
 import (
 	"context"
-	"errors"
 	"github.com/integration-system/isp-etp-go/parser"
-	"io"
 	"nhooyr.io/websocket"
 	"sync"
 )
@@ -18,6 +16,7 @@ type Client interface {
 	Close() error
 	//OnWithAck(event string, f func(data []byte) string) Client
 	Dial(ctx context.Context, url string) error
+	// If registered, all unknown events will be handled here.
 	OnDefault(f func(event string, data []byte)) Client
 	On(event string, f func(data []byte)) Client
 	Unsubscribe(event string) Client
@@ -85,23 +84,10 @@ func (cl *client) Dial(ctx context.Context, url string) error {
 }
 
 func (cl *client) serveRead() {
-	defer func() {
-		err := cl.Close()
-		if err != nil {
-			if errors.Is(err, io.EOF) {
-				err = nil
-			}
-		}
-		cl.onDisconnect(err)
-	}()
-
 	for {
 		_, bytes, err := cl.con.Read(cl.globalCtx)
 		if err != nil {
-			if errors.Is(err, io.EOF) {
-				return
-			}
-			cl.onError(err)
+			cl.onDisconnect(err)
 			return
 		}
 		event, body, err := parser.ParseData(bytes)

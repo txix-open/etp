@@ -5,7 +5,7 @@ import "sync"
 type RoomStore interface {
 	Add(Conn)
 	Remove(Conn)
-	Get(id string) (Conn, bool)
+	Get(connId string) (Conn, bool)
 	Join(conn Conn, rooms ...string)
 	Leave(conn Conn, rooms ...string)
 	LeaveByConnId(id string, rooms ...string)
