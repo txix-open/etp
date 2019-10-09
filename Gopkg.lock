@@ -18,7 +18,7 @@
   version = "v1.0.0"
 
 [[projects]]
-  digest = "1:c1163af24f4264df3ccf3afb37bb5857eaf955a0b028b03c82a946e8e27a64b6"
+  digest = "1:230072e0658e2af938592084a8cf6912a1e97f1b6e143b517f7edda05819ba14"
   name = "nhooyr.io/websocket"
   packages = [
     ".",
@@ -26,8 +26,8 @@
     "internal/wsjs",
   ]
   pruneopts = "UT"
-  revision = "dfce1fcd26e92af35bf6bc7154968a5992ab30ba"
-  version = "v1.6.5"
+  revision = "09910a23cca649c375c5b650d7297d2a75c589b4"
+  version = "v1.7.0"
 
 [solve-meta]
   analyzer-name = "dep"

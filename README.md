@@ -50,13 +50,13 @@ func main() {
 		OnDisconnect(func(conn etp.Conn, err error) {
 			log.Println("OnDisconnect id", conn.ID())
 			log.Println("OnDisconnect err:", err)
+			var closeErr websocket.CloseError
+			if errors.As(err, &closeErr) {
+				log.Println("OnDisconnect close code:", closeErr.Code)
+			}
 		}).
 		OnError(func(conn etp.Conn, err error) {
 			log.Println("OnError err:", err)
-			var closeErr websocket.CloseError
-			if errors.As(err, &closeErr) {
-				log.Println(closeErr.Code)
-			}
 			if conn != nil {
 				log.Println("OnError conn ID:", conn.ID())
 			}
@@ -84,8 +84,7 @@ func main() {
 		}
 	}()
 
-	closeCh := make(chan struct{})
-	<-closeCh
+	<-make(chan struct{})
 }
 ```
 
@@ -115,13 +114,13 @@ func main() {
 		}).
 		OnDisconnect(func(err error) {
 			log.Println("OnDisconnect err:", err)
+			var closeErr websocket.CloseError
+			if errors.As(err, &closeErr) {
+				log.Println("OnDisconnect close code:", closeErr.Code)
+			}
 		}).
 		OnError(func(err error) {
 			log.Println("OnError err:", err)
-			var closeErr websocket.CloseError
-			if errors.As(err, &closeErr) {
-				log.Println(closeErr.Code)
-			}
 		})
 	client.On(testEvent, func(data []byte) {
 		log.Printf("Received %s:%s\n", testEvent, string(data))
@@ -140,8 +139,7 @@ func main() {
 		log.Fatalln("emit error:", err)
 	}
 
-	closeCh := make(chan struct{})
-	<-closeCh
+	<-make(chan struct{})
 }
 
 ```
