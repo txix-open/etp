@@ -14,7 +14,7 @@ const (
 
 type Client interface {
 	Close() error
-	//OnWithAck(event string, f func(data []byte) string) Client
+	OnWithAck(event string, f func(data []byte) []byte) Client
 	Dial(ctx context.Context, url string) error
 	// If registered, all unknown events will be handled here.
 	OnDefault(f func(event string, data []byte)) Client
@@ -29,6 +29,7 @@ type Client interface {
 type client struct {
 	con               *websocket.Conn
 	handlers          map[string]func(data []byte)
+	ackHandlers       map[string]func(data []byte) []byte
 	defaultHandler    func(event string, data []byte)
 	connectHandler    func()
 	disconnectHandler func(err error)
@@ -41,8 +42,9 @@ type client struct {
 
 func NewClient(config Config) Client {
 	return &client{
-		handlers: map[string]func(data []byte){},
-		config:   config,
+		handlers:    make(map[string]func(data []byte)),
+		ackHandlers: make(map[string]func(data []byte) []byte),
+		config:      config,
 	}
 }
 
@@ -57,7 +59,7 @@ func (cl *client) Close() error {
 }
 
 func (cl *client) Emit(ctx context.Context, event string, body []byte) error {
-	data := parser.EncodeBody(event, body)
+	data := parser.EncodeEvent(event, 0, body)
 	return cl.con.Write(ctx, websocket.MessageText, data)
 }
 
@@ -83,6 +85,56 @@ func (cl *client) Dial(ctx context.Context, url string) error {
 	return nil
 }
 
+func (cl *client) On(event string, f func(data []byte)) Client {
+	cl.handlersLock.Lock()
+	cl.handlers[event] = f
+	cl.handlersLock.Unlock()
+	return cl
+}
+
+func (cl *client) OnWithAck(event string, f func(data []byte) []byte) Client {
+	cl.handlersLock.Lock()
+	cl.ackHandlers[event] = f
+	cl.handlersLock.Unlock()
+	return cl
+}
+
+// If registered, all unknown events will be handled here.
+func (cl *client) OnDefault(f func(event string, data []byte)) Client {
+	cl.handlersLock.Lock()
+	cl.defaultHandler = f
+	cl.handlersLock.Unlock()
+	return cl
+}
+
+func (cl *client) Unsubscribe(event string) Client {
+	cl.handlersLock.Lock()
+	delete(cl.handlers, event)
+	cl.handlersLock.Unlock()
+	return cl
+}
+
+func (cl *client) OnConnect(f func()) Client {
+	cl.handlersLock.Lock()
+	cl.connectHandler = f
+	cl.handlersLock.Unlock()
+	return cl
+}
+
+func (cl *client) OnDisconnect(f func(error)) Client {
+	cl.handlersLock.Lock()
+	cl.disconnectHandler = f
+	cl.handlersLock.Unlock()
+	return cl
+}
+
+func (cl *client) OnError(f func(error)) Client {
+	cl.handlersLock.Lock()
+	cl.errorHandler = f
+	cl.handlersLock.Unlock()
+	return cl
+}
+
 func (cl *client) serveRead() {
 	for {
 		_, bytes, err := cl.con.Read(cl.globalCtx)
@@ -90,7 +142,7 @@ func (cl *client) serveRead() {
 			cl.onDisconnect(err)
 			return
 		}
-		event, body, err := parser.ParseData(bytes)
+		event, reqId, body, err := parser.DecodeEvent(bytes)
 		if err != nil {
 			cl.onError(err)
 			continue
@@ -146,47 +198,4 @@ func (cl *client) onDefault(event string, data []byte) {
 	if handler != nil {
 		handler(event, data)
 	}
-}
-
-func (cl *client) On(event string, f func(data []byte)) Client {
-	cl.handlersLock.Lock()
-	cl.handlers[event] = f
-	cl.handlersLock.Unlock()
-	return cl
-}
-
-// If registered, all unknown events will be handled here.
-func (cl *client) OnDefault(f func(event string, data []byte)) Client {
-	cl.handlersLock.Lock()
-	cl.defaultHandler = f
-	cl.handlersLock.Unlock()
-	return cl
-}
-
-func (cl *client) Unsubscribe(event string) Client {
-	cl.handlersLock.Lock()
-	delete(cl.handlers, event)
-	cl.handlersLock.Unlock()
-	return cl
-}
-
-func (cl *client) OnConnect(f func()) Client {
-	cl.handlersLock.Lock()
-	cl.connectHandler = f
-	cl.handlersLock.Unlock()
-	return cl
-}
-
-func (cl *client) OnDisconnect(f func(error)) Client {
-	cl.handlersLock.Lock()
-	cl.disconnectHandler = f
-	cl.handlersLock.Unlock()
-	return cl
-}
-
-func (cl *client) OnError(f func(error)) Client {
-	cl.handlersLock.Lock()
-	cl.errorHandler = f
-	cl.handlersLock.Unlock()
-	return cl
 }

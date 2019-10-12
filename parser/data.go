@@ -3,39 +3,45 @@ package parser
 import (
 	"bytes"
 	"errors"
+	"fmt"
+	"strconv"
 )
 
-var ErrNoEventName = errors.New("parser: no event name in data")
+var ErrNoEventName = errors.New("parser: no event name or request id")
 
-const Delimiter = `||`
+const (
+	Delimiter = "||"
+)
+
+var (
+	delimiter = []byte(Delimiter)
+)
 
 // Returns event, body
-func ParseData(data []byte) (string, []byte, error) {
-	counter := 0
-	indexLast := 0
-	for i, b := range data {
-		if string(b) == "|" {
-			counter++
-		} else {
-			counter = 0
-		}
-		if counter == 2 {
-			indexLast = i
-			break
-		}
+func DecodeEvent(data []byte) (string, uint64, []byte, error) {
+	parts := bytes.SplitN(data, delimiter, 3)
+	if len(parts) < 2 {
+		return "", 0, nil, ErrNoEventName
 	}
-	if indexLast == 0 {
-		return "", nil, ErrNoEventName
+	reqId, err := strconv.Atoi(string(parts[1]))
+	if err != nil {
+		return "", 0, nil, fmt.Errorf("parser: invalid req id: %v", err)
 	}
-	return string(data[:indexLast-1]), data[indexLast+1:], nil
+	if len(parts) == 2 {
+		return string(parts[0]), uint64(reqId), []byte{}, nil
+	}
+	return string(parts[0]), uint64(reqId), parts[2], nil
 }
 
 // Returns data
-func EncodeBody(event string, body []byte) []byte {
+func EncodeEvent(event string, reqId uint64, body []byte) []byte {
 	var buf bytes.Buffer
-	buf.Grow(len(event) + len(body) + len(Delimiter))
+	reqIsStr := strconv.Itoa(int(reqId))
+	buf.Grow(len(event) + len(body) + len(delimiter)*2)
 	buf.WriteString(event)
-	buf.WriteString(Delimiter)
+	buf.Write(delimiter)
+	buf.WriteString(reqIsStr)
+	buf.Write(delimiter)
 	buf.Write(body)
 	return buf.Bytes()
 }
