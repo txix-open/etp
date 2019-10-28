@@ -17,7 +17,6 @@ var (
 	delimiter = []byte(Delimiter)
 )
 
-// Returns event, body
 func DecodeEvent(data []byte) (string, uint64, []byte, error) {
 	parts := bytes.SplitN(data, delimiter, 3)
 	if len(parts) < 2 {
@@ -33,7 +32,6 @@ func DecodeEvent(data []byte) (string, uint64, []byte, error) {
 	return string(parts[0]), uint64(reqId), parts[2], nil
 }
 
-// Returns data
 func EncodeEvent(event string, reqId uint64, body []byte) []byte {
 	var buf bytes.Buffer
 	reqIsStr := strconv.Itoa(int(reqId))

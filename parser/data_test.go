@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-func TestEncodeBody(t *testing.T) {
+func TestEncodeEvent(t *testing.T) {
 	type args struct {
 		event string
 		body  []byte
@@ -29,7 +29,7 @@ func TestEncodeBody(t *testing.T) {
 	}
 }
 
-func TestParseData(t *testing.T) {
+func TestDecodeEvent(t *testing.T) {
 	type args struct {
 		data []byte
 	}

@@ -2,6 +2,7 @@ package etp
 
 import (
 	"context"
+	"fmt"
 	"github.com/hashicorp/go-multierror"
 	"github.com/integration-system/isp-etp-go/ack"
 	"github.com/integration-system/isp-etp-go/gen"
@@ -91,7 +92,7 @@ func (s *server) ServeHttp(w http.ResponseWriter, r *http.Request) {
 		url:        r.URL,
 		closeCh:    make(chan struct{}),
 		ackers:     ack.NewAckers(),
-		gen:        &gen.DefaultReqIdGenerator{},
+		gen:        s.reqIdGenerator,
 	}
 	s.rooms.Add(connect)
 	s.onConnect(connect)
@@ -181,13 +182,11 @@ func (s *server) BroadcastToAll(event string, data []byte) error {
 }
 
 func (s *server) serveRead(con *conn) {
-	defer func() {
-		s.rooms.Remove(con)
-	}()
-
 	for {
 		_, bytes, err := con.read(s.globalCtx)
 		if err != nil {
+			s.rooms.Remove(con)
+			con.closeAckers()
 			s.onDisconnect(con, err)
 			return
 		}
@@ -205,7 +204,12 @@ func (s *server) serveRead(con *conn) {
 		}
 		if reqId > 0 {
 			if handler, ok := s.getAckHandler(event); ok {
-				handler(con, body)
+				answer := handler(con, body)
+				newBody := parser.EncodeEvent(ack.Event(event), reqId, answer)
+				err := con.conn.Write(s.globalCtx, websocket.MessageText, newBody)
+				if err != nil {
+					s.onError(con, fmt.Errorf("ack to event %s err: %w", event, err))
+				}
 			}
 			continue
 		}
