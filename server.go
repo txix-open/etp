@@ -197,12 +197,11 @@ func (s *server) serveRead(con *conn) {
 
 func (s *server) readConn(con *conn) error {
 	_, r, err := con.conn.Reader(s.globalCtx)
-	b := bpool.Get()
-	defer bpool.Put(b)
-
 	if err != nil {
 		return err
 	}
+	b := bpool.Get()
+	defer bpool.Put(b)
 	_, err = b.ReadFrom(r)
 	if err != nil {
 		return err

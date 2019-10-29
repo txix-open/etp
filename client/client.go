@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/integration-system/isp-etp-go/ack"
+	"github.com/integration-system/isp-etp-go/bpool"
 	"github.com/integration-system/isp-etp-go/gen"
 	"github.com/integration-system/isp-etp-go/parser"
 	"nhooyr.io/websocket"
@@ -171,43 +172,59 @@ func (cl *client) OnError(f func(error)) Client {
 }
 
 func (cl *client) serveRead() {
+	var err error
 	for {
-		_, bytes, err := cl.con.Read(cl.globalCtx)
+		err = cl.readConn()
 		if err != nil {
 			cl.close()
 			cl.onDisconnect(err)
-			break
-		}
-		event, reqId, body, err := parser.DecodeEvent(bytes)
-		if err != nil {
-			cl.onError(err)
-			continue
-		}
-		if ack.IsAckEvent(event) {
-			if reqId > 0 {
-				cl.ackers.TryAck(reqId, body)
-			}
-			continue
-		}
-		if reqId > 0 {
-			if handler, ok := cl.getAckHandler(event); ok {
-				answer := handler(body)
-				newBody := parser.EncodeEvent(ack.Event(event), reqId, answer)
-				err := cl.con.Write(cl.globalCtx, websocket.MessageText, newBody)
-				if err != nil {
-					cl.onError(fmt.Errorf("ack to event %s err: %w", event, err))
-				}
-			}
-			continue
-		}
-
-		handler, ok := cl.getHandler(event)
-		if ok {
-			handler(body)
-		} else {
-			cl.onDefault(event, body)
+			return
 		}
 	}
+}
+
+func (cl *client) readConn() error {
+	_, r, err := cl.con.Reader(cl.globalCtx)
+	if err != nil {
+		return err
+	}
+	b := bpool.Get()
+	defer bpool.Put(b)
+	_, err = b.ReadFrom(r)
+	if err != nil {
+		return err
+	}
+
+	event, reqId, body, err := parser.DecodeEvent(b.Bytes())
+	if err != nil {
+		cl.onError(err)
+		return nil
+	}
+	if ack.IsAckEvent(event) {
+		if reqId > 0 {
+			cl.ackers.TryAck(reqId, body)
+		}
+		return nil
+	}
+	if reqId > 0 {
+		if handler, ok := cl.getAckHandler(event); ok {
+			answer := handler(body)
+			newBody := parser.EncodeEvent(ack.Event(event), reqId, answer)
+			err := cl.con.Write(cl.globalCtx, websocket.MessageText, newBody)
+			if err != nil {
+				cl.onError(fmt.Errorf("ack to event %s err: %w", event, err))
+			}
+		}
+		return nil
+	}
+
+	handler, ok := cl.getHandler(event)
+	if ok {
+		handler(body)
+	} else {
+		cl.onDefault(event, body)
+	}
+	return nil
 }
 
 func (cl *client) close() {
