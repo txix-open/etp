@@ -67,7 +67,7 @@ func (cl *client) CloseWithCode(code websocket.StatusCode, reason string) error 
 		if cl.cancel != nil {
 			cl.cancel()
 		}
-		cl.closeAckers()
+		cl.close()
 	}()
 	return cl.con.Close(code, reason)
 }
@@ -174,7 +174,7 @@ func (cl *client) serveRead() {
 	for {
 		_, bytes, err := cl.con.Read(cl.globalCtx)
 		if err != nil {
-			cl.closeAckers()
+			cl.close()
 			cl.onDisconnect(err)
 			break
 		}
@@ -210,7 +210,7 @@ func (cl *client) serveRead() {
 	}
 }
 
-func (cl *client) closeAckers() {
+func (cl *client) close() {
 	cl.closeOnce.Do(func() {
 		close(cl.closeCh)
 		cl.closed = true

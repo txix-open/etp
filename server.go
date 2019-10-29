@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/hashicorp/go-multierror"
 	"github.com/integration-system/isp-etp-go/ack"
+	"github.com/integration-system/isp-etp-go/bpool"
 	"github.com/integration-system/isp-etp-go/gen"
 	"github.com/integration-system/isp-etp-go/parser"
 	"net/http"
@@ -182,43 +183,60 @@ func (s *server) BroadcastToAll(event string, data []byte) error {
 }
 
 func (s *server) serveRead(con *conn) {
+	var err error
 	for {
-		_, bytes, err := con.read(s.globalCtx)
+		err = s.readConn(con)
 		if err != nil {
 			s.rooms.Remove(con)
-			con.closeAckers()
+			con.close()
 			s.onDisconnect(con, err)
 			return
 		}
-		event, reqId, body, err := parser.DecodeEvent(bytes)
-		if err != nil {
-			s.onError(con, err)
-			continue
-		}
-
-		if ack.IsAckEvent(event) {
-			if reqId > 0 {
-				con.tryAck(reqId, body)
-			}
-			continue
-		}
-		if reqId > 0 {
-			if handler, ok := s.getAckHandler(event); ok {
-				answer := handler(con, body)
-				newBody := parser.EncodeEvent(ack.Event(event), reqId, answer)
-				err := con.conn.Write(s.globalCtx, websocket.MessageText, newBody)
-				if err != nil {
-					s.onError(con, fmt.Errorf("ack to event %s err: %w", event, err))
-				}
-			}
-			continue
-		}
-		if handler, ok := s.getHandler(event); ok {
-			handler(con, body)
-		} else {
-			s.onDefault(event, con, body)
-		}
 	}
+}
+
+func (s *server) readConn(con *conn) error {
+	_, r, err := con.conn.Reader(s.globalCtx)
+	b := bpool.Get()
+	defer bpool.Put(b)
+
+	if err != nil {
+		return err
+	}
+	_, err = b.ReadFrom(r)
+	if err != nil {
+		return err
+	}
+
+	event, reqId, body, err := parser.DecodeEvent(b.Bytes())
+	if err != nil {
+		s.onError(con, err)
+		return nil
+	}
+
+	if ack.IsAckEvent(event) {
+		if reqId > 0 {
+			con.tryAck(reqId, body)
+		}
+		return nil
+	}
+	if reqId > 0 {
+		if handler, ok := s.getAckHandler(event); ok {
+			answer := handler(con, body)
+			newBody := parser.EncodeEvent(ack.Event(event), reqId, answer)
+			err := con.conn.Write(s.globalCtx, websocket.MessageText, newBody)
+			if err != nil {
+				s.onError(con, fmt.Errorf("ack to event %s err: %w", event, err))
+			}
+		}
+		return nil
+	}
+	if handler, ok := s.getHandler(event); ok {
+		handler(con, body)
+	} else {
+		s.onDefault(event, con, body)
+	}
+	return nil
 }
 
 func (s *server) getHandler(event string) (func(conn Conn, data []byte), bool) {

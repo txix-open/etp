@@ -12,6 +12,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 )
 
 func SetupTestServer() (Server, *httptest.Server) {
@@ -37,6 +38,21 @@ func SetupTestClient(address string, cl *http.Client) client.Client {
 		log.Fatalln("dial error:", err)
 	}
 	return client
+}
+
+func Wait(wg *sync.WaitGroup) {
+	ch := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(ch)
+	}()
+
+	select {
+	case <-time.After(time.Second):
+
+	case <-ch:
+
+	}
 }
 
 func TestServer_On(t *testing.T) {
@@ -65,7 +81,7 @@ func TestServer_On(t *testing.T) {
 	})
 
 	err := cli.Emit(context.Background(), testEvent, testEventData)
-	wg.Wait()
+	Wait(wg)
 
 	a.NoError(err)
 	a.Equal(testEventData, receivedData)
@@ -163,7 +179,7 @@ func TestServer_OnDefault(t *testing.T) {
 	})
 
 	err := cli.Emit(context.Background(), testEvent, testEventData)
-	wg.Wait()
+	Wait(wg)
 
 	a.NoError(err)
 	a.Equal(testEventData, receivedData)
@@ -208,7 +224,7 @@ func TestConn_Close(t *testing.T) {
 
 	server.Close()
 	_, err := cli.EmitWithAck(context.Background(), testEvent, testEventData)
-	wg.Wait()
+	Wait(wg)
 
 	a.Equal(err, ack.ErrConnClose)
 	a.EqualValues(disconnectedCount, 1)
@@ -284,7 +300,7 @@ func TestClient_Emit(t *testing.T) {
 	err = cli.Emit(context.Background(), testEventEmit, testDataEmit)
 	a.NoError(err)
 
-	wg.Wait()
+	Wait(wg)
 	a.EqualValues(testDataAck, clientReceivedDataAck)
 	a.EqualValues(testDataAck, serverReceivedDataAck)
 

@@ -48,7 +48,7 @@ func (c *conn) ID() string {
 }
 
 func (c *conn) Close() error {
-	c.closeAckers()
+	c.close()
 	return c.conn.Close(websocket.StatusNormalClosure, defaultCloseReason)
 }
 
@@ -98,7 +98,7 @@ func (c *conn) tryAck(reqId uint64, data []byte) bool {
 	return c.ackers.TryAck(reqId, data)
 }
 
-func (c *conn) closeAckers() {
+func (c *conn) close() {
 	c.closeOnce.Do(func() {
 		close(c.closeCh)
 		c.closed = true
