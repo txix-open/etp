@@ -1,4 +1,4 @@
-package etp
+package gen
 
 import (
 	"strconv"
@@ -9,11 +9,11 @@ type ConnectionIDGenerator interface {
 	NewID() string
 }
 
-type defaultIDGenerator struct {
+type DefaultIDGenerator struct {
 	nextID uint64
 }
 
-func (g *defaultIDGenerator) NewID() string {
+func (g *DefaultIDGenerator) NewID() string {
 	id := atomic.AddUint64(&g.nextID, 1)
 	return strconv.FormatUint(id, 36)
 }

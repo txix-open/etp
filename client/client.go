@@ -2,6 +2,10 @@ package client
 
 import (
 	"context"
+	"fmt"
+	"github.com/integration-system/isp-etp-go/ack"
+	"github.com/integration-system/isp-etp-go/bpool"
+	"github.com/integration-system/isp-etp-go/gen"
 	"github.com/integration-system/isp-etp-go/parser"
 	"nhooyr.io/websocket"
 	"sync"
@@ -14,7 +18,8 @@ const (
 
 type Client interface {
 	Close() error
-	//OnWithAck(event string, f func(data []byte) string) Client
+	CloseWithCode(code websocket.StatusCode, reason string) error
+	OnWithAck(event string, f func(data []byte) []byte) Client
 	Dial(ctx context.Context, url string) error
 	// If registered, all unknown events will be handled here.
 	OnDefault(f func(event string, data []byte)) Client
@@ -24,47 +29,80 @@ type Client interface {
 	OnDisconnect(f func(error)) Client
 	OnError(f func(error)) Client
 	Emit(ctx context.Context, event string, body []byte) error
+	EmitWithAck(ctx context.Context, event string, body []byte) ([]byte, error)
+	Closed() bool
 }
 
 type client struct {
 	con               *websocket.Conn
 	handlers          map[string]func(data []byte)
+	ackHandlers       map[string]func(data []byte) []byte
 	defaultHandler    func(event string, data []byte)
 	connectHandler    func()
 	disconnectHandler func(err error)
 	errorHandler      func(err error)
 	handlersLock      sync.RWMutex
+	ackers            *ack.Ackers
+	reqIdGenerator    gen.ReqIdGenerator
 	globalCtx         context.Context
 	cancel            context.CancelFunc
 	config            Config
+	closeCh           chan struct{}
+	closeOnce         sync.Once
+	closed            bool
 }
 
 func NewClient(config Config) Client {
 	return &client{
-		handlers: map[string]func(data []byte){},
-		config:   config,
+		handlers:       make(map[string]func(data []byte)),
+		ackHandlers:    make(map[string]func(data []byte) []byte),
+		ackers:         ack.NewAckers(),
+		closeCh:        make(chan struct{}),
+		reqIdGenerator: &gen.DefaultReqIdGenerator{},
+		config:         config,
 	}
 }
 
-func (cl *client) Close() error {
+func (cl *client) CloseWithCode(code websocket.StatusCode, reason string) error {
 	defer func() {
 		if cl.cancel != nil {
 			cl.cancel()
 		}
+		cl.close()
 	}()
-	return cl.con.Close(websocket.StatusNormalClosure, defaultCloseReason)
+	return cl.con.Close(code, reason)
+}
 
+func (cl *client) Close() error {
+	return cl.CloseWithCode(websocket.StatusNormalClosure, defaultCloseReason)
+}
+
+func (cl *client) Closed() bool {
+	return cl.closed
 }
 
 func (cl *client) Emit(ctx context.Context, event string, body []byte) error {
-	data := parser.EncodeBody(event, body)
+	data := parser.EncodeEvent(event, 0, body)
 	return cl.con.Write(ctx, websocket.MessageText, data)
+}
+
+func (cl *client) EmitWithAck(ctx context.Context, event string, body []byte) ([]byte, error) {
+	reqId := cl.reqIdGenerator.NewID()
+	defer cl.ackers.UnregisterAck(reqId)
+	data := parser.EncodeEvent(event, reqId, body)
+
+	acker := cl.ackers.RegisterAck(reqId, ctx, cl.closeCh)
+	if err := cl.con.Write(ctx, websocket.MessageText, data); err != nil {
+		return nil, err
+	}
+	return acker.Await()
 }
 
 func (cl *client) Dial(ctx context.Context, url string) error {
 	ctx, cancel := context.WithCancel(ctx)
 	cl.globalCtx = ctx
 	cl.cancel = cancel
+	cl.closed = false
 
 	opts := &websocket.DialOptions{
 		HTTPClient: cl.config.HttpClient,
@@ -83,74 +121,16 @@ func (cl *client) Dial(ctx context.Context, url string) error {
 	return nil
 }
 
-func (cl *client) serveRead() {
-	for {
-		_, bytes, err := cl.con.Read(cl.globalCtx)
-		if err != nil {
-			cl.onDisconnect(err)
-			return
-		}
-		event, body, err := parser.ParseData(bytes)
-		if err != nil {
-			cl.onError(err)
-			continue
-		}
-
-		handler, ok := cl.getHandler(event)
-		if ok {
-			handler(body)
-		} else {
-			cl.onDefault(event, body)
-		}
-	}
-}
-
-func (cl *client) getHandler(event string) (func(data []byte), bool) {
-	cl.handlersLock.RLock()
-	handler, ok := cl.handlers[event]
-	cl.handlersLock.RUnlock()
-	return handler, ok
-}
-
-func (cl *client) onConnect() {
-	cl.handlersLock.RLock()
-	handler := cl.connectHandler
-	cl.handlersLock.RUnlock()
-	if handler != nil {
-		handler()
-	}
-}
-
-func (cl *client) onDisconnect(err error) {
-	cl.handlersLock.RLock()
-	handler := cl.disconnectHandler
-	cl.handlersLock.RUnlock()
-	if handler != nil {
-		handler(err)
-	}
-}
-
-func (cl *client) onError(err error) {
-	cl.handlersLock.RLock()
-	handler := cl.errorHandler
-	cl.handlersLock.RUnlock()
-	if handler != nil {
-		handler(err)
-	}
-}
-
-func (cl *client) onDefault(event string, data []byte) {
-	cl.handlersLock.RLock()
-	handler := cl.defaultHandler
-	cl.handlersLock.RUnlock()
-	if handler != nil {
-		handler(event, data)
-	}
-}
-
 func (cl *client) On(event string, f func(data []byte)) Client {
 	cl.handlersLock.Lock()
 	cl.handlers[event] = f
+	cl.handlersLock.Unlock()
+	return cl
+}
+
+func (cl *client) OnWithAck(event string, f func(data []byte) []byte) Client {
+	cl.handlersLock.Lock()
+	cl.ackHandlers[event] = f
 	cl.handlersLock.Unlock()
 	return cl
 }
@@ -189,4 +169,117 @@ func (cl *client) OnError(f func(error)) Client {
 	cl.errorHandler = f
 	cl.handlersLock.Unlock()
 	return cl
+}
+
+func (cl *client) serveRead() {
+	var err error
+	for {
+		err = cl.readConn()
+		if err != nil {
+			cl.close()
+			cl.onDisconnect(err)
+			return
+		}
+	}
+}
+
+func (cl *client) readConn() error {
+	_, r, err := cl.con.Reader(cl.globalCtx)
+	if err != nil {
+		return err
+	}
+	b := bpool.Get()
+	defer bpool.Put(b)
+	_, err = b.ReadFrom(r)
+	if err != nil {
+		return err
+	}
+
+	event, reqId, body, err := parser.DecodeEvent(b.Bytes())
+	if err != nil {
+		cl.onError(err)
+		return nil
+	}
+	if ack.IsAckEvent(event) {
+		if reqId > 0 {
+			cl.ackers.TryAck(reqId, body)
+		}
+		return nil
+	}
+	if reqId > 0 {
+		if handler, ok := cl.getAckHandler(event); ok {
+			answer := handler(body)
+			newBody := parser.EncodeEvent(ack.Event(event), reqId, answer)
+			err := cl.con.Write(cl.globalCtx, websocket.MessageText, newBody)
+			if err != nil {
+				cl.onError(fmt.Errorf("ack to event %s err: %w", event, err))
+			}
+		}
+		return nil
+	}
+
+	handler, ok := cl.getHandler(event)
+	if ok {
+		handler(body)
+	} else {
+		cl.onDefault(event, body)
+	}
+	return nil
+}
+
+func (cl *client) close() {
+	cl.closeOnce.Do(func() {
+		close(cl.closeCh)
+		cl.closed = true
+	})
+}
+
+func (cl *client) getHandler(event string) (func(data []byte), bool) {
+	cl.handlersLock.RLock()
+	handler, ok := cl.handlers[event]
+	cl.handlersLock.RUnlock()
+	return handler, ok
+}
+
+func (cl *client) getAckHandler(event string) (func(data []byte) []byte, bool) {
+	cl.handlersLock.RLock()
+	handler, ok := cl.ackHandlers[event]
+	cl.handlersLock.RUnlock()
+	return handler, ok
+}
+
+func (cl *client) onConnect() {
+	cl.handlersLock.RLock()
+	handler := cl.connectHandler
+	cl.handlersLock.RUnlock()
+	if handler != nil {
+		handler()
+	}
+}
+
+func (cl *client) onDisconnect(err error) {
+	cl.handlersLock.RLock()
+	handler := cl.disconnectHandler
+	cl.handlersLock.RUnlock()
+	if handler != nil {
+		handler(err)
+	}
+}
+
+func (cl *client) onError(err error) {
+	cl.handlersLock.RLock()
+	handler := cl.errorHandler
+	cl.handlersLock.RUnlock()
+	if handler != nil {
+		handler(err)
+	}
+}
+
+func (cl *client) onDefault(event string, data []byte) {
+	cl.handlersLock.RLock()
+	handler := cl.defaultHandler
+	cl.handlersLock.RUnlock()
+	if handler != nil {
+		handler(event, data)
+	}
 }

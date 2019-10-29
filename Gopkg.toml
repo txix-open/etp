@@ -28,11 +28,3 @@
 [prune]
   go-tests = true
   unused-packages = true
-
-[[constraint]]
-  name = "nhooyr.io/websocket"
-  version = "1.6.5"
-
-[[constraint]]
-  name = "github.com/hashicorp/go-multierror"
-  version = "1.0.0"

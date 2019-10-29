@@ -2,7 +2,11 @@ package etp
 
 import (
 	"context"
+	"fmt"
 	"github.com/hashicorp/go-multierror"
+	"github.com/integration-system/isp-etp-go/ack"
+	"github.com/integration-system/isp-etp-go/bpool"
+	"github.com/integration-system/isp-etp-go/gen"
 	"github.com/integration-system/isp-etp-go/parser"
 	"net/http"
 	"nhooyr.io/websocket"
@@ -12,7 +16,7 @@ import (
 type Server interface {
 	Close()
 	ServeHttp(w http.ResponseWriter, r *http.Request)
-	//OnWithAck(event string, f func(conn Conn, data []byte) string) Server
+	OnWithAck(event string, f func(conn Conn, data []byte) []byte) Server
 	// If registered, all unknown events will be handled here.
 	OnDefault(f func(event string, conn Conn, data []byte)) Server
 	On(event string, f func(conn Conn, data []byte)) Server
@@ -29,12 +33,14 @@ type Server interface {
 
 type server struct {
 	handlers          map[string]func(conn Conn, data []byte)
+	ackHandlers       map[string]func(conn Conn, data []byte) []byte
 	rooms             RoomStore
 	defaultHandler    func(event string, conn Conn, data []byte)
 	connectHandler    func(conn Conn)
 	disconnectHandler func(conn Conn, err error)
 	errorHandler      func(conn Conn, err error)
-	idGenerator       ConnectionIDGenerator
+	idGenerator       gen.ConnectionIDGenerator
+	reqIdGenerator    gen.ReqIdGenerator
 	handlersLock      sync.RWMutex
 	globalCtx         context.Context
 	cancel            context.CancelFunc
@@ -44,12 +50,14 @@ type server struct {
 func NewServer(ctx context.Context, config ServerConfig) Server {
 	ctx, cancel := context.WithCancel(ctx)
 	return &server{
-		handlers:    map[string]func(conn Conn, data []byte){},
-		rooms:       NewRoomStore(),
-		globalCtx:   ctx,
-		cancel:      cancel,
-		idGenerator: &defaultIDGenerator{},
-		config:      config,
+		handlers:       make(map[string]func(conn Conn, data []byte)),
+		ackHandlers:    make(map[string]func(conn Conn, data []byte) []byte),
+		rooms:          NewRoomStore(),
+		globalCtx:      ctx,
+		cancel:         cancel,
+		idGenerator:    &gen.DefaultIDGenerator{},
+		reqIdGenerator: &gen.DefaultReqIdGenerator{},
+		config:         config,
 	}
 }
 
@@ -83,79 +91,13 @@ func (s *server) ServeHttp(w http.ResponseWriter, r *http.Request) {
 		header:     r.Header,
 		remoteAddr: r.RemoteAddr,
 		url:        r.URL,
+		closeCh:    make(chan struct{}),
+		ackers:     ack.NewAckers(),
+		gen:        s.reqIdGenerator,
 	}
 	s.rooms.Add(connect)
 	s.onConnect(connect)
 	go s.serveRead(connect)
-}
-
-func (s *server) serveRead(con Conn) {
-	defer func() {
-		s.rooms.Remove(con)
-	}()
-
-	for {
-		_, bytes, err := con.read(s.globalCtx)
-		if err != nil {
-			s.onDisconnect(con, err)
-			return
-		}
-		event, body, err := parser.ParseData(bytes)
-		if err != nil {
-			s.onError(con, err)
-			continue
-		}
-
-		handler, ok := s.getHandler(event)
-		if ok {
-			handler(con, body)
-		} else {
-			s.onDefault(event, con, body)
-		}
-	}
-}
-
-func (s *server) getHandler(event string) (func(conn Conn, data []byte), bool) {
-	s.handlersLock.RLock()
-	handler, ok := s.handlers[event]
-	s.handlersLock.RUnlock()
-	return handler, ok
-}
-
-func (s *server) onConnect(conn Conn) {
-	s.handlersLock.RLock()
-	handler := s.connectHandler
-	s.handlersLock.RUnlock()
-	if handler != nil {
-		handler(conn)
-	}
-}
-
-func (s *server) onDisconnect(conn Conn, err error) {
-	s.handlersLock.RLock()
-	handler := s.disconnectHandler
-	s.handlersLock.RUnlock()
-	if handler != nil {
-		handler(conn, err)
-	}
-}
-
-func (s *server) onError(conn Conn, err error) {
-	s.handlersLock.RLock()
-	handler := s.errorHandler
-	s.handlersLock.RUnlock()
-	if handler != nil {
-		handler(conn, err)
-	}
-}
-
-func (s *server) onDefault(event string, conn Conn, data []byte) {
-	s.handlersLock.RLock()
-	handler := s.defaultHandler
-	s.handlersLock.RUnlock()
-	if handler != nil {
-		handler(event, conn, data)
-	}
 }
 
 func (s *server) Rooms() RoomStore {
@@ -165,6 +107,13 @@ func (s *server) Rooms() RoomStore {
 func (s *server) On(event string, f func(conn Conn, data []byte)) Server {
 	s.handlersLock.Lock()
 	s.handlers[event] = f
+	s.handlersLock.Unlock()
+	return s
+}
+
+func (s *server) OnWithAck(event string, f func(conn Conn, data []byte) []byte) Server {
+	s.handlersLock.Lock()
+	s.ackHandlers[event] = f
 	s.handlersLock.Unlock()
 	return s
 }
@@ -231,4 +180,110 @@ func (s *server) BroadcastToAll(event string, data []byte) error {
 		}
 	}
 	return errs
+}
+
+func (s *server) serveRead(con *conn) {
+	var err error
+	for {
+		err = s.readConn(con)
+		if err != nil {
+			s.rooms.Remove(con)
+			con.close()
+			s.onDisconnect(con, err)
+			return
+		}
+	}
+}
+
+func (s *server) readConn(con *conn) error {
+	_, r, err := con.conn.Reader(s.globalCtx)
+	if err != nil {
+		return err
+	}
+	b := bpool.Get()
+	defer bpool.Put(b)
+	_, err = b.ReadFrom(r)
+	if err != nil {
+		return err
+	}
+
+	event, reqId, body, err := parser.DecodeEvent(b.Bytes())
+	if err != nil {
+		s.onError(con, err)
+		return nil
+	}
+
+	if ack.IsAckEvent(event) {
+		if reqId > 0 {
+			con.tryAck(reqId, body)
+		}
+		return nil
+	}
+	if reqId > 0 {
+		if handler, ok := s.getAckHandler(event); ok {
+			answer := handler(con, body)
+			newBody := parser.EncodeEvent(ack.Event(event), reqId, answer)
+			err := con.conn.Write(s.globalCtx, websocket.MessageText, newBody)
+			if err != nil {
+				s.onError(con, fmt.Errorf("ack to event %s err: %w", event, err))
+			}
+		}
+		return nil
+	}
+	if handler, ok := s.getHandler(event); ok {
+		handler(con, body)
+	} else {
+		s.onDefault(event, con, body)
+	}
+	return nil
+}
+
+func (s *server) getHandler(event string) (func(conn Conn, data []byte), bool) {
+	s.handlersLock.RLock()
+	handler, ok := s.handlers[event]
+	s.handlersLock.RUnlock()
+	return handler, ok
+}
+
+func (s *server) getAckHandler(event string) (func(conn Conn, data []byte) []byte, bool) {
+	s.handlersLock.RLock()
+	handler, ok := s.ackHandlers[event]
+	s.handlersLock.RUnlock()
+	return handler, ok
+}
+
+func (s *server) onConnect(conn Conn) {
+	s.handlersLock.RLock()
+	handler := s.connectHandler
+	s.handlersLock.RUnlock()
+	if handler != nil {
+		handler(conn)
+	}
+}
+
+func (s *server) onDisconnect(conn Conn, err error) {
+	s.handlersLock.RLock()
+	handler := s.disconnectHandler
+	s.handlersLock.RUnlock()
+	if handler != nil {
+		handler(conn, err)
+	}
+}
+
+func (s *server) onError(conn Conn, err error) {
+	s.handlersLock.RLock()
+	handler := s.errorHandler
+	s.handlersLock.RUnlock()
+	if handler != nil {
+		handler(conn, err)
+	}
+}
+
+func (s *server) onDefault(event string, conn Conn, data []byte) {
+	s.handlersLock.RLock()
+	handler := s.defaultHandler
+	s.handlersLock.RUnlock()
+	if handler != nil {
+		handler(event, conn, data)
+	}
 }
