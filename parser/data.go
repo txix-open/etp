@@ -33,7 +33,12 @@ func DecodeEvent(data []byte) (string, uint64, []byte, error) {
 }
 
 func EncodeEvent(event string, reqId uint64, body []byte) []byte {
-	var buf bytes.Buffer
+	buf := new(bytes.Buffer)
+	EncodeEventToBuffer(buf, event, reqId, body)
+	return buf.Bytes()
+}
+
+func EncodeEventToBuffer(buf *bytes.Buffer, event string, reqId uint64, body []byte) {
 	reqIsStr := strconv.Itoa(int(reqId))
 	buf.Grow(len(event) + len(body) + len(delimiter)*2)
 	buf.WriteString(event)
@@ -41,5 +46,4 @@ func EncodeEvent(event string, reqId uint64, body []byte) []byte {
 	buf.WriteString(reqIsStr)
 	buf.Write(delimiter)
 	buf.Write(body)
-	return buf.Bytes()
 }

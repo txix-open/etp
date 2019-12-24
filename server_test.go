@@ -2,6 +2,8 @@ package etp
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"github.com/integration-system/isp-etp-go/ack"
 	"github.com/integration-system/isp-etp-go/client"
 	"github.com/stretchr/testify/assert"
@@ -40,7 +42,7 @@ func SetupTestClient(address string, cl *http.Client) client.Client {
 	return client
 }
 
-func Wait(wg *sync.WaitGroup) {
+func wait(wg *sync.WaitGroup, duration time.Duration) error {
 	ch := make(chan struct{})
 	go func() {
 		wg.Wait()
@@ -48,11 +50,12 @@ func Wait(wg *sync.WaitGroup) {
 	}()
 
 	select {
-	case <-time.After(time.Second):
-
+	case <-time.After(duration):
+		return errors.New("waiting timeout exceeded")
 	case <-ch:
 
 	}
+	return nil
 }
 
 func TestServer_On(t *testing.T) {
@@ -81,7 +84,9 @@ func TestServer_On(t *testing.T) {
 	})
 
 	err := cli.Emit(context.Background(), testEvent, testEventData)
-	Wait(wg)
+
+	err2 := wait(wg, time.Second)
+	a.NoError(err2)
 
 	a.NoError(err)
 	a.Equal(testEventData, receivedData)
@@ -108,7 +113,7 @@ func TestServer_OnWithAck(t *testing.T) {
 		a.Fail("OnDefault", string(data))
 	})
 	server.OnError(func(conn Conn, err error) {
-		a.Fail("OnError", conn, err)
+		a.Fail("OnError", err)
 	})
 
 	resp, err := cli.EmitWithAck(context.Background(), testEvent, testEventData)
@@ -138,7 +143,7 @@ func TestServer_OnWithAck_ClosedConn(t *testing.T) {
 		a.Fail("OnDefault", string(data))
 	})
 	server.OnError(func(conn Conn, err error) {
-		a.Fail("OnError", conn, err)
+		a.Fail("OnError", err)
 	})
 	server.Close()
 	resp, err := cli.EmitWithAck(context.Background(), testEvent, testEventData)
@@ -179,7 +184,9 @@ func TestServer_OnDefault(t *testing.T) {
 	})
 
 	err := cli.Emit(context.Background(), testEvent, testEventData)
-	Wait(wg)
+
+	err2 := wait(wg, time.Second)
+	a.NoError(err2)
 
 	a.NoError(err)
 	a.Equal(testEventData, receivedData)
@@ -224,12 +231,13 @@ func TestConn_Close(t *testing.T) {
 
 	server.Close()
 	_, err := cli.EmitWithAck(context.Background(), testEvent, testEventData)
-	Wait(wg)
+
+	err2 := wait(wg, time.Second)
+	a.NoError(err2)
 
 	a.Equal(err, ack.ErrConnClose)
 	a.EqualValues(disconnectedCount, 1)
 	a.EqualValues(connectedCount, 1)
-
 }
 
 func TestClient_Emit(t *testing.T) {
@@ -300,10 +308,76 @@ func TestClient_Emit(t *testing.T) {
 	err = cli.Emit(context.Background(), testEventEmit, testDataEmit)
 	a.NoError(err)
 
-	Wait(wg)
+	err2 := wait(wg, time.Second)
+	a.NoError(err2)
+
 	a.EqualValues(testDataAck, clientReceivedDataAck)
 	a.EqualValues(testDataAck, serverReceivedDataAck)
 
 	a.EqualValues(testDataEmit, serverReceivedDataEmit)
 	a.EqualValues(testDataEmit, clientReceivedDataEmit)
+}
+
+func TestConn_ManyConcurrentWrites(t *testing.T) {
+	a := assert.New(t)
+	testEvent := "test_event"
+
+	wg := new(sync.WaitGroup)
+	messagesNumber := 2000
+	var finishedMessages int64 = 0
+	wg.Add(messagesNumber)
+
+	server, httpServer := SetupTestServer()
+	defer server.Close()
+	defer httpServer.Close()
+
+	server.OnWithAck(testEvent, func(conn Conn, data []byte) []byte {
+		response := make([]byte, len(data))
+		copy(response, data)
+		return response
+	})
+	server.OnDefault(func(event string, conn Conn, data []byte) {
+		a.Fail("OnDefault", string(data))
+	})
+	server.OnError(func(conn Conn, err error) {
+		a.Fail("OnError", conn, err)
+	})
+
+	cli1 := SetupTestClient(httpServer.URL, &http.Client{Transport: &http.Transport{}})
+	defer cli1.Close()
+	cli1.OnError(func(err error) {
+		a.NoError(err, "cli1 onError")
+	})
+	cli2 := SetupTestClient(httpServer.URL, &http.Client{Transport: &http.Transport{}})
+	defer cli2.Close()
+	cli2.OnError(func(err error) {
+		a.NoError(err, "cli2 onError")
+	})
+
+	for i := 0; i < messagesNumber; i++ {
+		go func(i int) {
+			defer func() {
+				atomic.AddInt64(&finishedMessages, 1)
+				wg.Done()
+			}()
+			msg := fmt.Sprintf("msg-%d", i)
+			var cli client.Client
+			if i%2 == 0 {
+				cli = cli1
+			} else {
+				cli = cli2
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+			defer cancel()
+			response, err := cli.EmitWithAck(ctx, testEvent, []byte(msg))
+
+			a.NoError(err)
+			a.Equal(string(response), msg, "from %d client", i%2)
+		}(i)
+	}
+
+	err2 := wait(wg, 5*time.Second)
+	a.NoError(err2)
+
+	a.EqualValues(atomic.LoadInt64(&finishedMessages), messagesNumber)
 }

@@ -3,6 +3,7 @@ package etp
 import (
 	"context"
 	"github.com/integration-system/isp-etp-go/ack"
+	"github.com/integration-system/isp-etp-go/bpool"
 	"github.com/integration-system/isp-etp-go/gen"
 	"github.com/integration-system/isp-etp-go/parser"
 	"net/http"
@@ -77,17 +78,21 @@ func (c *conn) SetContext(v interface{}) {
 }
 
 func (c *conn) Emit(ctx context.Context, event string, body []byte) error {
-	data := parser.EncodeEvent(event, 0, body)
-	return c.conn.Write(ctx, websocket.MessageText, data)
+	buf := bpool.Get()
+	defer bpool.Put(buf)
+	parser.EncodeEventToBuffer(buf, event, 0, body)
+	return c.conn.Write(ctx, websocket.MessageText, buf.Bytes())
 }
 
 func (c *conn) EmitWithAck(ctx context.Context, event string, body []byte) ([]byte, error) {
 	reqId := c.gen.NewID()
 	defer c.ackers.UnregisterAck(reqId)
-	data := parser.EncodeEvent(event, reqId, body)
+	buf := bpool.Get()
+	defer bpool.Put(buf)
 
+	parser.EncodeEventToBuffer(buf, event, reqId, body)
 	acker := c.ackers.RegisterAck(reqId, ctx, c.closeCh)
-	if err := c.conn.Write(ctx, websocket.MessageText, data); err != nil {
+	if err := c.conn.Write(ctx, websocket.MessageText, buf.Bytes()); err != nil {
 		return nil, err
 	}
 

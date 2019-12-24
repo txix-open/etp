@@ -82,17 +82,21 @@ func (cl *client) Closed() bool {
 }
 
 func (cl *client) Emit(ctx context.Context, event string, body []byte) error {
-	data := parser.EncodeEvent(event, 0, body)
-	return cl.con.Write(ctx, websocket.MessageText, data)
+	buf := bpool.Get()
+	defer bpool.Put(buf)
+	parser.EncodeEventToBuffer(buf, event, 0, body)
+	return cl.con.Write(ctx, websocket.MessageText, buf.Bytes())
 }
 
 func (cl *client) EmitWithAck(ctx context.Context, event string, body []byte) ([]byte, error) {
 	reqId := cl.reqIdGenerator.NewID()
 	defer cl.ackers.UnregisterAck(reqId)
-	data := parser.EncodeEvent(event, reqId, body)
+	buf := bpool.Get()
+	defer bpool.Put(buf)
 
+	parser.EncodeEventToBuffer(buf, event, reqId, body)
 	acker := cl.ackers.RegisterAck(reqId, ctx, cl.closeCh)
-	if err := cl.con.Write(ctx, websocket.MessageText, data); err != nil {
+	if err := cl.con.Write(ctx, websocket.MessageText, buf.Bytes()); err != nil {
 		return nil, err
 	}
 	return acker.Await()
@@ -202,15 +206,19 @@ func (cl *client) readConn() error {
 	}
 	if ack.IsAckEvent(event) {
 		if reqId > 0 {
-			cl.ackers.TryAck(reqId, body)
+			bodyCopy := make([]byte, len(body))
+			copy(bodyCopy, body)
+			cl.ackers.TryAck(reqId, bodyCopy)
 		}
 		return nil
 	}
 	if reqId > 0 {
 		if handler, ok := cl.getAckHandler(event); ok {
 			answer := handler(body)
-			newBody := parser.EncodeEvent(ack.Event(event), reqId, answer)
-			err := cl.con.Write(cl.globalCtx, websocket.MessageText, newBody)
+			answerBuf := bpool.Get()
+			defer bpool.Put(answerBuf)
+			parser.EncodeEventToBuffer(answerBuf, ack.Event(event), reqId, answer)
+			err := cl.con.Write(cl.globalCtx, websocket.MessageText, answerBuf.Bytes())
 			if err != nil {
 				cl.onError(fmt.Errorf("ack to event %s err: %w", event, err))
 			}

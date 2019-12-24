@@ -215,15 +215,19 @@ func (s *server) readConn(con *conn) error {
 
 	if ack.IsAckEvent(event) {
 		if reqId > 0 {
-			con.tryAck(reqId, body)
+			bodyCopy := make([]byte, len(body))
+			copy(bodyCopy, body)
+			con.tryAck(reqId, bodyCopy)
 		}
 		return nil
 	}
 	if reqId > 0 {
 		if handler, ok := s.getAckHandler(event); ok {
 			answer := handler(con, body)
-			newBody := parser.EncodeEvent(ack.Event(event), reqId, answer)
-			err := con.conn.Write(s.globalCtx, websocket.MessageText, newBody)
+			answerBuf := bpool.Get()
+			defer bpool.Put(answerBuf)
+			parser.EncodeEventToBuffer(answerBuf, ack.Event(event), reqId, answer)
+			err := con.conn.Write(s.globalCtx, websocket.MessageText, answerBuf.Bytes())
 			if err != nil {
 				s.onError(con, fmt.Errorf("ack to event %s err: %w", event, err))
 			}
