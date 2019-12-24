@@ -30,8 +30,10 @@ func (a *Acker) Await() ([]byte, error) {
 func (a *Acker) Notify(data []byte) {
 	select {
 	case a.ackDataChan <- data:
-	default:
-
+	case <-a.reqCtx.Done():
+		return
+	case <-a.closeCh:
+		return
 	}
 }
 

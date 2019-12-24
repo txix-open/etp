@@ -200,14 +200,14 @@ func (s *server) readConn(con *conn) error {
 	if err != nil {
 		return err
 	}
-	b := bpool.Get()
-	defer bpool.Put(b)
-	_, err = b.ReadFrom(r)
+	buf := bpool.Get()
+	defer bpool.Put(buf)
+	_, err = buf.ReadFrom(r)
 	if err != nil {
 		return err
 	}
 
-	event, reqId, body, err := parser.DecodeEvent(b.Bytes())
+	event, reqId, body, err := parser.DecodeEvent(buf.Bytes())
 	if err != nil {
 		s.onError(con, err)
 		return nil
@@ -224,10 +224,9 @@ func (s *server) readConn(con *conn) error {
 	if reqId > 0 {
 		if handler, ok := s.getAckHandler(event); ok {
 			answer := handler(con, body)
-			answerBuf := bpool.Get()
-			defer bpool.Put(answerBuf)
-			parser.EncodeEventToBuffer(answerBuf, ack.Event(event), reqId, answer)
-			err := con.conn.Write(s.globalCtx, websocket.MessageText, answerBuf.Bytes())
+			buf.Reset()
+			parser.EncodeEventToBuffer(buf, ack.Event(event), reqId, answer)
+			err := con.conn.Write(s.globalCtx, websocket.MessageText, buf.Bytes())
 			if err != nil {
 				s.onError(con, fmt.Errorf("ack to event %s err: %w", event, err))
 			}
