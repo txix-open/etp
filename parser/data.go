@@ -18,15 +18,16 @@ var (
 )
 
 func DecodeEvent(data []byte) (string, uint64, []byte, error) {
+	const noBodyEventParts = 2
 	parts := bytes.SplitN(data, delimiter, 3)
-	if len(parts) < 2 {
+	if len(parts) < noBodyEventParts {
 		return "", 0, nil, ErrNoEventName
 	}
 	reqId, err := strconv.Atoi(string(parts[1]))
 	if err != nil {
 		return "", 0, nil, fmt.Errorf("parser: invalid req id: %v", err)
 	}
-	if len(parts) == 2 {
+	if len(parts) == noBodyEventParts {
 		return string(parts[0]), uint64(reqId), []byte{}, nil
 	}
 	return string(parts[0]), uint64(reqId), parts[2], nil

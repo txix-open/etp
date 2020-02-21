@@ -9,7 +9,7 @@ Websocket framework based on library [github.com/nhooyr/websocket](https://githu
 ## Install
 
 ```bash
-go get github.com/integration-system/isp-etp-go
+go get github.com/integration-system/isp-etp-go/v2
 ```
 
 ## Features:
@@ -26,7 +26,7 @@ package main
 import (
 	"context"
 	"errors"
-	"github.com/integration-system/isp-etp-go"
+	"github.com/integration-system/isp-etp-go/v2"
 	"log"
 	"net/http"
 	"nhooyr.io/websocket"
@@ -95,7 +95,7 @@ package main
 import (
 	"context"
 	"errors"
-	etpclient "github.com/integration-system/isp-etp-go/client"
+	etpclient "github.com/integration-system/isp-etp-go/v2/client"
 	"log"
 	"net/http"
 	"nhooyr.io/websocket"

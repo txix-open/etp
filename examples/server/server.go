@@ -3,9 +3,10 @@ package main
 import (
 	"context"
 	"errors"
-	"github.com/integration-system/isp-etp-go"
 	"log"
 	"net/http"
+
+	"github.com/integration-system/isp-etp-go/v2"
 	"nhooyr.io/websocket"
 )
 

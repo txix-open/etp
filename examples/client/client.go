@@ -3,9 +3,10 @@ package main
 import (
 	"context"
 	"errors"
-	etpclient "github.com/integration-system/isp-etp-go/client"
 	"log"
 	"net/http"
+
+	etpclient "github.com/integration-system/isp-etp-go/v2/client"
 	"nhooyr.io/websocket"
 )
 

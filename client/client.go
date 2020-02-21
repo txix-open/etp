@@ -3,12 +3,13 @@ package client
 import (
 	"context"
 	"fmt"
-	"github.com/integration-system/isp-etp-go/ack"
-	"github.com/integration-system/isp-etp-go/bpool"
-	"github.com/integration-system/isp-etp-go/gen"
-	"github.com/integration-system/isp-etp-go/parser"
-	"nhooyr.io/websocket"
 	"sync"
+
+	"github.com/integration-system/isp-etp-go/v2/ack"
+	"github.com/integration-system/isp-etp-go/v2/bpool"
+	"github.com/integration-system/isp-etp-go/v2/gen"
+	"github.com/integration-system/isp-etp-go/v2/parser"
+	"nhooyr.io/websocket"
 )
 
 const (

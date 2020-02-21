@@ -4,9 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/integration-system/isp-etp-go/ack"
-	"github.com/integration-system/isp-etp-go/client"
-	"github.com/stretchr/testify/assert"
 	"log"
 	"net/http"
 	"net/http/httptest"
@@ -15,6 +12,10 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/integration-system/isp-etp-go/v2/ack"
+	"github.com/integration-system/isp-etp-go/v2/client"
+	"github.com/stretchr/testify/assert"
 )
 
 func SetupTestServer() (Server, *httptest.Server) {

@@ -2,14 +2,15 @@ package etp
 
 import (
 	"context"
-	"github.com/integration-system/isp-etp-go/ack"
-	"github.com/integration-system/isp-etp-go/bpool"
-	"github.com/integration-system/isp-etp-go/gen"
-	"github.com/integration-system/isp-etp-go/parser"
 	"net/http"
 	"net/url"
-	"nhooyr.io/websocket"
 	"sync"
+
+	"github.com/integration-system/isp-etp-go/v2/ack"
+	"github.com/integration-system/isp-etp-go/v2/bpool"
+	"github.com/integration-system/isp-etp-go/v2/gen"
+	"github.com/integration-system/isp-etp-go/v2/parser"
+	"nhooyr.io/websocket"
 )
 
 type Conn interface {
@@ -108,8 +109,4 @@ func (c *conn) close() {
 		close(c.closeCh)
 		c.closed = true
 	})
-}
-
-func (c *conn) read(ctx context.Context) (websocket.MessageType, []byte, error) {
-	return c.conn.Read(ctx)
 }

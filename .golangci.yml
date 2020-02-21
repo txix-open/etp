@@ -1,0 +1,40 @@
+run:
+  tests: false
+
+linters:
+  enable-all: true
+  disable:
+    - goimports
+    - depguard # не используется
+    - gochecknoinits
+    - gochecknoglobals
+    - wsl
+    - gocognit
+    - godox # находит тудушки, не нужно
+    - golint # подумать, может вернуть
+    - stylecheck # подумать, может вернуть
+
+linters-settings:
+  maligned:
+    suggest-new: true
+  lll:
+    line-length: 140
+    tab-width: 1
+  funlen:
+    lines: 80
+    statements: 40
+  prealloc:
+    # Report preallocation suggestions only on simple loops that have no returns/breaks/continues/gotos in them.
+    # True by default.
+    simple: true
+    range-loops: true # Report preallocation suggestions on range loops, true by default
+    for-loops: true # Report preallocation suggestions on for loops, false by default
+  gocritic:
+    # Enable multiple checks by tags, run `GL_DEBUG=gocritic golangci-lint run` to see all tags and checks.
+    # Empty list by default. See https://github.com/go-critic/go-critic#usage -> section "Tags".
+    enabled-tags:
+      - diagnostic
+      - performance
+    settings:
+      hugeParam:
+        sizeThreshold: 90
