@@ -21,6 +21,7 @@ type Conn interface {
 	RemoteHeader() http.Header
 	Context() interface{}
 	SetContext(v interface{})
+	Ping(ctx context.Context) error
 	Emit(ctx context.Context, event string, body []byte) error
 	EmitWithAck(ctx context.Context, event string, body []byte) ([]byte, error)
 	Closed() bool
@@ -76,6 +77,10 @@ func (c *conn) Context() interface{} {
 
 func (c *conn) SetContext(v interface{}) {
 	c.context = v
+}
+
+func (c *conn) Ping(ctx context.Context) error {
+	return c.conn.Ping(ctx)
 }
 
 func (c *conn) Emit(ctx context.Context, event string, body []byte) error {

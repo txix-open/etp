@@ -12,6 +12,8 @@ import (
 	"nhooyr.io/websocket"
 )
 
+// TODO: all methods: add check for cl.con != nil? Add lock?
+
 const (
 	// TODO
 	defaultCloseReason = ""
@@ -22,6 +24,7 @@ type Client interface {
 	CloseWithCode(code websocket.StatusCode, reason string) error
 	OnWithAck(event string, f func(data []byte) []byte) Client
 	Dial(ctx context.Context, url string) error
+	Ping(ctx context.Context) error
 	// If registered, all unknown events will be handled here.
 	OnDefault(f func(event string, data []byte)) Client
 	On(event string, f func(data []byte)) Client
@@ -124,6 +127,10 @@ func (cl *client) Dial(ctx context.Context, url string) error {
 	cl.onConnect()
 	go cl.serveRead()
 	return nil
+}
+
+func (cl *client) Ping(ctx context.Context) error {
+	return cl.con.Ping(ctx)
 }
 
 func (cl *client) On(event string, f func(data []byte)) Client {
