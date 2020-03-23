@@ -172,8 +172,7 @@ func (s *server) BroadcastToRoom(room string, event string, data []byte) error {
 // Returns go-multierror
 func (s *server) BroadcastToAll(event string, data []byte) error {
 	var errs error
-	rooms := s.rooms.Rooms()
-	conns := s.rooms.ToBroadcast(rooms...)
+	conns := s.rooms.ToBroadcast(idsRoom)
 	for _, conn := range conns {
 		err := conn.Emit(s.globalCtx, event, data)
 		if err != nil {
