@@ -1,6 +1,7 @@
 package client
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"sync"
@@ -51,17 +52,32 @@ type client struct {
 	globalCtx         context.Context
 	cancel            context.CancelFunc
 	config            Config
+	workersCh         chan eventMsg
 	closeCh           chan struct{}
 	closeOnce         sync.Once
 	closed            bool
 }
 
+type eventMsg struct {
+	event string
+	reqId uint64
+	body  []byte
+	buf   *bytes.Buffer
+}
+
 func NewClient(config Config) Client {
+	if config.WorkersNum <= 0 {
+		config.WorkersNum = defaultWorkersNum
+	}
+	if config.WorkersBufferMultiplier <= 0 {
+		config.WorkersBufferMultiplier = defaultWorkersBufferMultiplier
+	}
 	return &client{
 		handlers:       make(map[string]func(data []byte)),
 		ackHandlers:    make(map[string]func(data []byte) []byte),
 		ackers:         ack.NewAckers(),
 		closeCh:        make(chan struct{}),
+		workersCh:      make(chan eventMsg, config.WorkersNum*config.WorkersBufferMultiplier),
 		reqIdGenerator: &gen.DefaultReqIdGenerator{},
 		config:         config,
 	}
@@ -69,9 +85,6 @@ func NewClient(config Config) Client {
 
 func (cl *client) CloseWithCode(code websocket.StatusCode, reason string) error {
 	defer func() {
-		if cl.cancel != nil {
-			cl.cancel()
-		}
 		cl.close()
 	}()
 	return cl.con.Close(code, reason)
@@ -124,6 +137,10 @@ func (cl *client) Dial(ctx context.Context, url string) error {
 	if cl.config.ConnectionReadLimit != 0 {
 		c.SetReadLimit(cl.config.ConnectionReadLimit)
 	}
+	for i := 0; i < cl.config.WorkersNum; i++ {
+		go cl.worker()
+	}
+
 	cl.onConnect()
 	go cl.serveRead()
 	return nil
@@ -195,13 +212,43 @@ func (cl *client) serveRead() {
 	}
 }
 
+func (cl *client) worker() {
+	for msg := range cl.workersCh {
+		if msg.reqId > 0 {
+			if handler, ok := cl.getAckHandler(msg.event); ok {
+				answer := handler(msg.body)
+				msg.buf.Reset()
+				parser.EncodeEventToBuffer(msg.buf, ack.Event(msg.event), msg.reqId, answer)
+				err := cl.con.Write(cl.globalCtx, websocket.MessageText, msg.buf.Bytes())
+				if err != nil {
+					cl.onError(fmt.Errorf("ack to event %s err: %w", msg.event, err))
+				}
+			}
+			bpool.Put(msg.buf)
+			continue
+		}
+		handler, ok := cl.getHandler(msg.event)
+		if ok {
+			handler(msg.body)
+		} else {
+			cl.onDefault(msg.event, msg.body)
+		}
+		bpool.Put(msg.buf)
+	}
+}
+
 func (cl *client) readConn() error {
 	_, r, err := cl.con.Reader(cl.globalCtx)
 	if err != nil {
 		return err
 	}
+	needPutBuf := true
 	buf := bpool.Get()
-	defer bpool.Put(buf)
+	defer func() {
+		if needPutBuf {
+			bpool.Put(buf)
+		}
+	}()
 	_, err = buf.ReadFrom(r)
 	if err != nil {
 		return err
@@ -220,31 +267,18 @@ func (cl *client) readConn() error {
 		}
 		return nil
 	}
-	if reqId > 0 {
-		if handler, ok := cl.getAckHandler(event); ok {
-			answer := handler(body)
-			buf.Reset()
-			parser.EncodeEventToBuffer(buf, ack.Event(event), reqId, answer)
-			err := cl.con.Write(cl.globalCtx, websocket.MessageText, buf.Bytes())
-			if err != nil {
-				cl.onError(fmt.Errorf("ack to event %s err: %w", event, err))
-			}
-		}
-		return nil
-	}
-
-	handler, ok := cl.getHandler(event)
-	if ok {
-		handler(body)
-	} else {
-		cl.onDefault(event, body)
-	}
+	cl.workersCh <- eventMsg{event: event, reqId: reqId, body: body, buf: buf}
+	needPutBuf = false
 	return nil
 }
 
 func (cl *client) close() {
 	cl.closeOnce.Do(func() {
+		if cl.cancel != nil {
+			cl.cancel()
+		}
 		close(cl.closeCh)
+		close(cl.workersCh)
 		cl.closed = true
 	})
 }
