@@ -46,7 +46,7 @@ func SetupTestClientWithConfig(address string, config client.Config) client.Clie
 
 func testUrl(address string) string {
 	address = strings.Replace(address, "http://", "ws://", 1)
-	address = address + "/isp-etp/"
+	address += "/isp-etp/"
 	return address
 }
 
@@ -61,7 +61,6 @@ func wait(wg *sync.WaitGroup, duration time.Duration) error {
 	case <-time.After(duration):
 		return errors.New("waiting timeout exceeded")
 	case <-ch:
-
 	}
 	return nil
 }
@@ -69,7 +68,7 @@ func wait(wg *sync.WaitGroup, duration time.Duration) error {
 func TestServer_On(t *testing.T) {
 	defer goleak.VerifyNone(t)
 	a := assert.New(t)
-	testEvent := "test_event"
+	const testEvent = "test_event"
 	testEventData := []byte("testdata")
 	wg := new(sync.WaitGroup)
 	wg.Add(1)
@@ -104,7 +103,7 @@ func TestServer_On(t *testing.T) {
 func TestServer_OnWithAck(t *testing.T) {
 	defer goleak.VerifyNone(t)
 	a := assert.New(t)
-	testEvent := "test_event"
+	const testEvent = "test_event"
 	testEventData := []byte("testdata")
 	testResponseData := []byte("testdata_response")
 
@@ -193,7 +192,7 @@ func TestServer_AckAndCloseOnConnect(t *testing.T) {
 func TestServer_OnWithAck_ClosedConn(t *testing.T) {
 	defer goleak.VerifyNone(t)
 	a := assert.New(t)
-	testEvent := "test_event"
+	const testEvent = "test_event"
 	testEventData := []byte("testdata")
 	testResponseData := []byte("testdata_response")
 
@@ -225,8 +224,8 @@ func TestServer_OnWithAck_ClosedConn(t *testing.T) {
 func TestServer_OnDefault(t *testing.T) {
 	defer goleak.VerifyNone(t)
 	a := assert.New(t)
-	testEvent := "test_event"
-	testEvent2 := "test_event_2"
+	const testEvent = "test_event"
+	const testEvent2 = "test_event_2"
 	testEventData := []byte("testdata")
 	wg := new(sync.WaitGroup)
 	wg.Add(1)
@@ -265,7 +264,7 @@ func TestServer_OnDefault(t *testing.T) {
 func TestConn_Close(t *testing.T) {
 	defer goleak.VerifyNone(t)
 	a := assert.New(t)
-	testEvent := "test_event"
+	const testEvent = "test_event"
 	testEventData := []byte("testdata")
 	wg := new(sync.WaitGroup)
 	wg.Add(2)
@@ -314,8 +313,8 @@ func TestConn_Close(t *testing.T) {
 func TestClient_Emit(t *testing.T) {
 	defer goleak.VerifyNone(t)
 	a := assert.New(t)
-	testEventEmit := "test_event"
-	testEventAck := "test_event_ack"
+	const testEventEmit = "test_event"
+	const testEventAck = "test_event_ack"
 	testDataEmit := []byte("testdata")
 	testDataAck := []byte("test ack data")
 	testAckResponseData := []byte("testdata_response")
@@ -393,8 +392,7 @@ func TestClient_Emit(t *testing.T) {
 func TestConn_ManyConcurrentWrites(t *testing.T) {
 	defer goleak.VerifyNone(t)
 	a := assert.New(t)
-	testEvent := "test_event"
-
+	const testEvent = "test_event"
 	wg := new(sync.WaitGroup)
 	messagesNumber := 2000
 	var finishedMessages int64 = 0
@@ -464,19 +462,20 @@ func TestClientHandlersWorkers_AsyncDefault(t *testing.T) {
 	defer goleak.VerifyNone(t)
 	startTime := time.Now()
 	clientHandlersWorkersTesting(t, 3, 0)
-	deltaTime := time.Now().Sub(startTime)
+	deltaTime := time.Since(startTime)
 	maxDeltaTime := 550 * time.Millisecond
 	if deltaTime > maxDeltaTime {
 		t.Errorf("Asynchron handling by workers is not working: Time expected less: %v, got: %v", maxDeltaTime, deltaTime)
 	}
 }
 
-func clientHandlersWorkersTesting(t *testing.T, WorkersNum, WorkersChanBufferMultiplier int) {
-	testEvent := "test_event"
-	testAckEvent := "test_ack_event"
-	testDefaultEvent := "test_default_event"
-	testAckResponseData := []byte("testdata_response")
-
+func clientHandlersWorkersTesting(t *testing.T, workersNum, workersChanBufferMultiplier int) {
+	const (
+		testEvent           = "test_event"
+		testAckEvent        = "test_ack_event"
+		testDefaultEvent    = "test_default_event"
+		testAckResponseData = "testdata_response"
+	)
 	server, httpServer := SetupTestServer()
 	defer httpServer.Close()
 
@@ -488,14 +487,14 @@ func clientHandlersWorkersTesting(t *testing.T, WorkersNum, WorkersChanBufferMul
 
 	cli := SetupTestClientWithConfig(httpServer.URL, client.Config{
 		HttpClient:              httpServer.Client(),
-		WorkersNum:              WorkersNum,
-		WorkersBufferMultiplier: WorkersChanBufferMultiplier,
+		WorkersNum:              workersNum,
+		WorkersBufferMultiplier: workersChanBufferMultiplier,
 	})
 	defer cli.Close()
 
 	cli.OnWithAck(testAckEvent, func(data []byte) []byte {
 		time.Sleep(500 * time.Millisecond)
-		return testAckResponseData
+		return []byte(testAckResponseData)
 	})
 	cli.On(testEvent, func(data []byte) {
 		time.Sleep(500 * time.Millisecond)
@@ -511,8 +510,8 @@ func clientHandlersWorkersTesting(t *testing.T, WorkersNum, WorkersChanBufferMul
 		defer wg.Done()
 		resp, err := connect.EmitWithAck(context.Background(), testAckEvent, []byte(testAckEvent))
 		if err != nil {
-			t.Errorf("EmitWithAck was returned error: %v, with responce: %v", err, resp)
-		} else if string(resp) != string(testAckResponseData) {
+			t.Errorf("EmitWithAck was returned error: %v, with response: %v", err, resp)
+		} else if string(resp) != testAckResponseData {
 			t.Errorf("EmitWithAck was returned response: %v, but expected: %s", resp, testAckResponseData)
 		}
 	}()
@@ -536,7 +535,7 @@ func clientHandlersWorkersTesting(t *testing.T, WorkersNum, WorkersChanBufferMul
 	if err := connect.Ping(context.Background()); err != nil {
 		t.Errorf("Ping was returned error: %v, ", err)
 	}
-	deltaTime := time.Now().Sub(startTime)
+	deltaTime := time.Since(startTime)
 
 	fmt.Println(deltaTime)
 	if deltaTime > 10*time.Millisecond {
