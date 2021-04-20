@@ -13,8 +13,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/integration-system/isp-etp-go/v2/ack"
 	"github.com/integration-system/isp-etp-go/v2/client"
 	"github.com/stretchr/testify/assert"
+	"go.uber.org/goleak"
 	"nhooyr.io/websocket"
 )
 
@@ -34,14 +36,18 @@ func SetupTestClient(address string, cl *http.Client) client.Client {
 }
 
 func SetupTestClientWithConfig(address string, config client.Config) client.Client {
-	address = strings.Replace(address, "http://", "ws://", 1)
-	address = address + "/isp-etp/"
 	client := client.NewClient(config)
-	err := client.Dial(context.TODO(), address)
+	err := client.Dial(context.TODO(), testUrl(address))
 	if err != nil {
 		log.Fatalln("dial error:", err)
 	}
 	return client
+}
+
+func testUrl(address string) string {
+	address = strings.Replace(address, "http://", "ws://", 1)
+	address = address + "/isp-etp/"
+	return address
 }
 
 func wait(wg *sync.WaitGroup, duration time.Duration) error {
@@ -61,6 +67,7 @@ func wait(wg *sync.WaitGroup, duration time.Duration) error {
 }
 
 func TestServer_On(t *testing.T) {
+	defer goleak.VerifyNone(t)
 	a := assert.New(t)
 	testEvent := "test_event"
 	testEventData := []byte("testdata")
@@ -95,6 +102,7 @@ func TestServer_On(t *testing.T) {
 }
 
 func TestServer_OnWithAck(t *testing.T) {
+	defer goleak.VerifyNone(t)
 	a := assert.New(t)
 	testEvent := "test_event"
 	testEventData := []byte("testdata")
@@ -124,38 +132,98 @@ func TestServer_OnWithAck(t *testing.T) {
 	a.Equal(testResponseData, resp)
 }
 
-//func TestServer_OnWithAck_ClosedConn(t *testing.T) {
-//	a := assert.New(t)
-//	testEvent := "test_event"
-//	testEventData := []byte("testdata")
-//	testResponseData := []byte("testdata_response")
-//
-//	server, httpServer := SetupTestServer()
-//	defer httpServer.Close()
-//
-//	cli := SetupTestClient(httpServer.URL, httpServer.Client())
-//	defer cli.Close()
-//
-//	var receivedData []byte
-//	server.OnWithAck(testEvent, func(conn Conn, data []byte) []byte {
-//		receivedData = append(receivedData, data...)
-//		return testResponseData
-//	})
-//	server.OnDefault(func(event string, conn Conn, data []byte) {
-//		a.Fail("OnDefault", string(data))
-//	})
-//	server.OnError(func(conn Conn, err error) {
-//		a.Fail("OnError", err)
-//	})
-//	server.Close()
-//	resp, err := cli.EmitWithAck(context.Background(), testEvent, testEventData)
-//
-//	a.Equal(err, ack.ErrConnClose)
-//	a.Equal([]byte(nil), receivedData)
-//	a.Equal([]byte(nil), resp)
-//}
+func TestServer_AckAndCloseOnConnect(t *testing.T) {
+	defer goleak.VerifyNone(t)
+	a := assert.New(t)
+	const testEvent = "test_event"
+	testEventData := []byte("testdata")
+
+	clientEventsCh := make(chan int, 10)
+	const (
+		onConnect = iota + 1
+		onMessage
+		onDisconnect
+	)
+
+	server, httpServer := SetupTestServer()
+	defer httpServer.Close()
+	server.OnDefault(func(event string, conn Conn, data []byte) {
+		a.Fail("OnDefault", string(data))
+	})
+	server.OnError(func(conn Conn, err error) {
+		a.Fail("OnError", err)
+	})
+	server.OnConnect(func(conn Conn) {
+		err := conn.Emit(context.Background(), testEvent, testEventData)
+		a.NoError(err)
+		err = conn.Emit(context.Background(), testEvent, testEventData)
+		a.NoError(err)
+		err = conn.Emit(context.Background(), testEvent, testEventData)
+		a.NoError(err)
+		err = conn.Close()
+		a.NoError(err)
+	})
+
+	cli := client.NewClient(client.Config{HttpClient: httpServer.Client()})
+	cli.OnConnect(func() {
+		clientEventsCh <- onConnect
+	})
+	cli.OnDisconnect(func(err error) {
+		clientEventsCh <- onDisconnect
+	})
+	cli.OnError(func(err error) {
+		a.Fail("OnError", err)
+	})
+	cli.On(testEvent, func(data []byte) {
+		time.Sleep(1 * time.Millisecond)
+		clientEventsCh <- onMessage
+	})
+
+	err := cli.Dial(context.Background(), testUrl(httpServer.URL))
+	a.NoError(err)
+
+	a.EqualValues(onConnect, <-clientEventsCh)
+	a.EqualValues(onMessage, <-clientEventsCh)
+	a.EqualValues(onMessage, <-clientEventsCh)
+	a.EqualValues(onMessage, <-clientEventsCh)
+	a.EqualValues(onDisconnect, <-clientEventsCh)
+	a.True(cli.Closed())
+}
+
+func TestServer_OnWithAck_ClosedConn(t *testing.T) {
+	defer goleak.VerifyNone(t)
+	a := assert.New(t)
+	testEvent := "test_event"
+	testEventData := []byte("testdata")
+	testResponseData := []byte("testdata_response")
+
+	server, httpServer := SetupTestServer()
+	defer httpServer.Close()
+
+	cli := SetupTestClient(httpServer.URL, httpServer.Client())
+	defer cli.Close()
+
+	var receivedData []byte
+	server.OnWithAck(testEvent, func(conn Conn, data []byte) []byte {
+		receivedData = append(receivedData, data...)
+		return testResponseData
+	})
+	server.OnDefault(func(event string, conn Conn, data []byte) {
+		a.Fail("OnDefault", string(data))
+	})
+	server.OnError(func(conn Conn, err error) {
+		a.Fail("OnError", err)
+	})
+	server.Close()
+	resp, err := cli.EmitWithAck(context.Background(), testEvent, testEventData)
+
+	a.Equal(err, ack.ErrConnClose)
+	a.Equal([]byte(nil), receivedData)
+	a.Equal([]byte(nil), resp)
+}
 
 func TestServer_OnDefault(t *testing.T) {
+	defer goleak.VerifyNone(t)
 	a := assert.New(t)
 	testEvent := "test_event"
 	testEvent2 := "test_event_2"
@@ -195,6 +263,7 @@ func TestServer_OnDefault(t *testing.T) {
 }
 
 func TestConn_Close(t *testing.T) {
+	defer goleak.VerifyNone(t)
 	a := assert.New(t)
 	testEvent := "test_event"
 	testEventData := []byte("testdata")
@@ -243,6 +312,7 @@ func TestConn_Close(t *testing.T) {
 }
 
 func TestClient_Emit(t *testing.T) {
+	defer goleak.VerifyNone(t)
 	a := assert.New(t)
 	testEventEmit := "test_event"
 	testEventAck := "test_event_ack"
@@ -321,6 +391,7 @@ func TestClient_Emit(t *testing.T) {
 }
 
 func TestConn_ManyConcurrentWrites(t *testing.T) {
+	defer goleak.VerifyNone(t)
 	a := assert.New(t)
 	testEvent := "test_event"
 
@@ -382,6 +453,22 @@ func TestConn_ManyConcurrentWrites(t *testing.T) {
 	a.NoError(err2)
 
 	a.EqualValues(atomic.LoadInt64(&finishedMessages), messagesNumber)
+}
+
+func TestClientHandlersWorkers_SyncDefault(t *testing.T) {
+	defer goleak.VerifyNone(t)
+	clientHandlersWorkersTesting(t, 0, 0)
+}
+
+func TestClientHandlersWorkers_AsyncDefault(t *testing.T) {
+	defer goleak.VerifyNone(t)
+	startTime := time.Now()
+	clientHandlersWorkersTesting(t, 3, 0)
+	deltaTime := time.Now().Sub(startTime)
+	maxDeltaTime := 550 * time.Millisecond
+	if deltaTime > maxDeltaTime {
+		t.Errorf("Asynchron handling by workers is not working: Time expected less: %v, got: %v", maxDeltaTime, deltaTime)
+	}
 }
 
 func clientHandlersWorkersTesting(t *testing.T, WorkersNum, WorkersChanBufferMultiplier int) {
@@ -457,18 +544,4 @@ func clientHandlersWorkersTesting(t *testing.T, WorkersNum, WorkersChanBufferMul
 	}
 
 	wg.Wait()
-}
-
-func TestClientHandlersWorkers_SyncDefault(t *testing.T) {
-	clientHandlersWorkersTesting(t, 0, 0)
-}
-
-func TestClientHandlersWorkers_AsyncDefault(t *testing.T) {
-	startTime := time.Now()
-	clientHandlersWorkersTesting(t, 3, 0)
-	deltaTime := time.Now().Sub(startTime)
-	maxDeltaTime := 550 * time.Millisecond
-	if deltaTime > maxDeltaTime {
-		t.Errorf("Asynchron handling by workers is not working: Time expected less: %v, got: %v", maxDeltaTime, deltaTime)
-	}
 }

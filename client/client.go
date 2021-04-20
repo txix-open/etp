@@ -53,6 +53,7 @@ type client struct {
 	cancel            context.CancelFunc
 	config            Config
 	workersCh         chan eventMsg
+	workersWg         sync.WaitGroup
 	closeCh           chan struct{}
 	closeOnce         sync.Once
 	closed            bool
@@ -138,6 +139,7 @@ func (cl *client) Dial(ctx context.Context, url string) error {
 		c.SetReadLimit(cl.config.ConnectionReadLimit)
 	}
 	for i := 0; i < cl.config.WorkersNum; i++ {
+		cl.workersWg.Add(1)
 		go cl.worker()
 	}
 
@@ -213,6 +215,7 @@ func (cl *client) serveRead() {
 }
 
 func (cl *client) worker() {
+	defer cl.workersWg.Done()
 	for msg := range cl.workersCh {
 		if msg.reqId > 0 {
 			if handler, ok := cl.getAckHandler(msg.event); ok {
@@ -274,11 +277,12 @@ func (cl *client) readConn() error {
 
 func (cl *client) close() {
 	cl.closeOnce.Do(func() {
+		close(cl.workersCh)
+		cl.workersWg.Wait()
 		if cl.cancel != nil {
 			cl.cancel()
 		}
 		close(cl.closeCh)
-		close(cl.workersCh)
 		cl.closed = true
 	})
 }
