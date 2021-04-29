@@ -61,7 +61,7 @@ func NewServer(_ context.Context, config ServerConfig) Server {
 
 func (s *server) Close() {
 	atomic.StoreInt64(&s.closed, 1)
-	conns := s.rooms.ToBroadcast(idsRoom)
+	conns := s.rooms.AllConns()
 	for _, connection := range conns {
 		connection.(*conn).close()
 	}
@@ -180,7 +180,7 @@ func (s *server) BroadcastToRoom(room string, event string, data []byte) error {
 // Returns go-multierror
 func (s *server) BroadcastToAll(event string, data []byte) error {
 	var errs error
-	conns := s.rooms.ToBroadcast(idsRoom)
+	conns := s.rooms.AllConns()
 	for _, conn := range conns {
 		err := conn.Emit(context.Background(), event, data)
 		if err != nil {

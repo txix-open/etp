@@ -13,6 +13,7 @@ type RoomStore interface {
 	Clear(rooms ...string)
 	Rooms() []string
 	ToBroadcast(rooms ...string) []Conn
+	AllConns() []Conn
 }
 
 const (
@@ -117,6 +118,10 @@ func (s *roomStore) ToBroadcast(rooms ...string) []Conn {
 	}
 	s.mu.RUnlock()
 	return result
+}
+
+func (s *roomStore) AllConns() []Conn {
+	return s.ToBroadcast(idsRoom)
 }
 
 func NewRoomStore() RoomStore {
