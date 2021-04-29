@@ -13,7 +13,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/integration-system/isp-etp-go/v2/ack"
 	"github.com/integration-system/isp-etp-go/v2/client"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/goleak"
@@ -187,38 +186,6 @@ func TestServer_AckAndCloseOnConnect(t *testing.T) {
 	a.EqualValues(onMessage, <-clientEventsCh)
 	a.EqualValues(onDisconnect, <-clientEventsCh)
 	a.True(cli.Closed())
-}
-
-func TestServer_OnWithAck_ClosedConn(t *testing.T) {
-	defer goleak.VerifyNone(t)
-	a := assert.New(t)
-	const testEvent = "test_event"
-	testEventData := []byte("testdata")
-	testResponseData := []byte("testdata_response")
-
-	server, httpServer := SetupTestServer()
-	defer httpServer.Close()
-
-	cli := SetupTestClient(httpServer.URL, httpServer.Client())
-	defer cli.Close()
-
-	var receivedData []byte
-	server.OnWithAck(testEvent, func(conn Conn, data []byte) []byte {
-		receivedData = append(receivedData, data...)
-		return testResponseData
-	})
-	server.OnDefault(func(event string, conn Conn, data []byte) {
-		a.Fail("OnDefault", string(data))
-	})
-	server.OnError(func(conn Conn, err error) {
-		a.Fail("OnError", err)
-	})
-	server.Close()
-	resp, err := cli.EmitWithAck(context.Background(), testEvent, testEventData)
-
-	a.Equal(err, ack.ErrConnClose)
-	a.Equal([]byte(nil), receivedData)
-	a.Equal([]byte(nil), resp)
 }
 
 func TestServer_OnDefault(t *testing.T) {

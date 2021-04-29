@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"sync"
+	"sync/atomic"
 
 	"github.com/hashicorp/go-multierror"
 	"github.com/integration-system/isp-etp-go/v2/ack"
@@ -43,19 +44,15 @@ type server struct {
 	idGenerator       gen.ConnectionIDGenerator
 	reqIdGenerator    gen.ReqIdGenerator
 	handlersLock      sync.RWMutex
-	globalCtx         context.Context
-	cancel            context.CancelFunc
+	closed            int64
 	config            ServerConfig
 }
 
-func NewServer(ctx context.Context, config ServerConfig) Server {
-	ctx, cancel := context.WithCancel(ctx)
+func NewServer(_ context.Context, config ServerConfig) Server {
 	return &server{
 		handlers:       make(map[string]func(conn Conn, data []byte)),
 		ackHandlers:    make(map[string]func(conn Conn, data []byte) []byte),
 		rooms:          NewRoomStore(),
-		globalCtx:      ctx,
-		cancel:         cancel,
 		idGenerator:    &gen.DefaultIDGenerator{},
 		reqIdGenerator: &gen.DefaultReqIdGenerator{},
 		config:         config,
@@ -63,7 +60,11 @@ func NewServer(ctx context.Context, config ServerConfig) Server {
 }
 
 func (s *server) Close() {
-	s.cancel()
+	atomic.StoreInt64(&s.closed, 1)
+	conns := s.rooms.ToBroadcast(idsRoom)
+	for _, connection := range conns {
+		connection.(*conn).close()
+	}
 }
 
 func (s *server) ServeHttp(w http.ResponseWriter, r *http.Request) {
@@ -73,6 +74,11 @@ func (s *server) ServeHttp(w http.ResponseWriter, r *http.Request) {
 			s.onError(nil, err)
 			return
 		}
+	}
+
+	if atomic.LoadInt64(&s.closed) == 1 {
+		http.Error(w, http.StatusText(http.StatusServiceUnavailable)+": websocket server is closed", http.StatusServiceUnavailable)
+		return
 	}
 	options := websocket.AcceptOptions{
 		InsecureSkipVerify: s.config.InsecureSkipVerify,
@@ -85,6 +91,7 @@ func (s *server) ServeHttp(w http.ResponseWriter, r *http.Request) {
 	if s.config.ConnectionReadLimit != 0 {
 		c.SetReadLimit(s.config.ConnectionReadLimit)
 	}
+	connCtx, cancelCtx := context.WithCancel(r.Context())
 	id := s.idGenerator.NewID()
 	connect := &conn{
 		conn:       c,
@@ -92,13 +99,14 @@ func (s *server) ServeHttp(w http.ResponseWriter, r *http.Request) {
 		header:     r.Header,
 		remoteAddr: r.RemoteAddr,
 		url:        r.URL,
-		closeCh:    make(chan struct{}),
-		ackers:     ack.NewAckers(),
+		ackers:     ack.NewAckers(connCtx),
 		gen:        s.reqIdGenerator,
+		connCtx:    connCtx,
+		cancelCtx:  cancelCtx,
 	}
 	s.rooms.Add(connect)
 	s.onConnect(connect)
-	go s.serveRead(connect)
+	s.serveRead(connect)
 }
 
 func (s *server) Rooms() RoomStore {
@@ -161,7 +169,7 @@ func (s *server) BroadcastToRoom(room string, event string, data []byte) error {
 	var errs error
 	conns := s.rooms.ToBroadcast(room)
 	for _, conn := range conns {
-		err := conn.Emit(s.globalCtx, event, data)
+		err := conn.Emit(context.Background(), event, data)
 		if err != nil {
 			errs = multierror.Append(errs, err)
 		}
@@ -174,7 +182,7 @@ func (s *server) BroadcastToAll(event string, data []byte) error {
 	var errs error
 	conns := s.rooms.ToBroadcast(idsRoom)
 	for _, conn := range conns {
-		err := conn.Emit(s.globalCtx, event, data)
+		err := conn.Emit(context.Background(), event, data)
 		if err != nil {
 			errs = multierror.Append(errs, err)
 		}
@@ -196,7 +204,7 @@ func (s *server) serveRead(con *conn) {
 }
 
 func (s *server) readConn(con *conn) error {
-	_, r, err := con.conn.Reader(s.globalCtx)
+	_, r, err := con.conn.Reader(con.connCtx)
 	if err != nil {
 		return err
 	}
@@ -226,7 +234,7 @@ func (s *server) readConn(con *conn) error {
 			answer := handler(con, body)
 			buf.Reset()
 			parser.EncodeEventToBuffer(buf, ack.Event(event), reqId, answer)
-			err := con.conn.Write(s.globalCtx, websocket.MessageText, buf.Bytes())
+			err := con.conn.Write(con.connCtx, websocket.MessageText, buf.Bytes())
 			if err != nil {
 				s.onError(con, fmt.Errorf("ack to event %s err: %w", event, err))
 			}
