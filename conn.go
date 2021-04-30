@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/url"
+	"sync/atomic"
 
 	"github.com/integration-system/isp-etp-go/v2/ack"
 	"github.com/integration-system/isp-etp-go/v2/bpool"
@@ -37,7 +38,7 @@ type conn struct {
 	header     http.Header
 	remoteAddr string
 	url        *url.URL
-	context    interface{}
+	context    atomic.Value
 	gen        gen.ReqIdGenerator
 	ackers     *ack.Ackers
 	connCtx    context.Context
@@ -70,11 +71,11 @@ func (c *conn) RemoteHeader() http.Header {
 }
 
 func (c *conn) Context() interface{} {
-	return c.context
+	return c.context.Load()
 }
 
 func (c *conn) SetContext(v interface{}) {
-	c.context = v
+	c.context.Store(v)
 }
 
 func (c *conn) Ping(ctx context.Context) error {
