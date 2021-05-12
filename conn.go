@@ -4,7 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/url"
-	"sync"
+	"sync/atomic"
 
 	"github.com/integration-system/isp-etp-go/v2/ack"
 	"github.com/integration-system/isp-etp-go/v2/bpool"
@@ -38,12 +38,11 @@ type conn struct {
 	header     http.Header
 	remoteAddr string
 	url        *url.URL
-	context    interface{}
+	context    atomic.Value
 	gen        gen.ReqIdGenerator
 	ackers     *ack.Ackers
-	closeCh    chan struct{}
-	closeOnce  sync.Once
-	closed     bool
+	connCtx    context.Context
+	cancelCtx  func()
 }
 
 func (c *conn) ID() string {
@@ -51,12 +50,12 @@ func (c *conn) ID() string {
 }
 
 func (c *conn) Close() error {
-	c.close()
+	defer c.close()
 	return c.conn.Close(websocket.StatusNormalClosure, defaultCloseReason)
 }
 
 func (c *conn) Closed() bool {
-	return c.closed
+	return c.connCtx.Err() != nil
 }
 
 func (c *conn) URL() *url.URL {
@@ -72,11 +71,11 @@ func (c *conn) RemoteHeader() http.Header {
 }
 
 func (c *conn) Context() interface{} {
-	return c.context
+	return c.context.Load()
 }
 
 func (c *conn) SetContext(v interface{}) {
-	c.context = v
+	c.context.Store(v)
 }
 
 func (c *conn) Ping(ctx context.Context) error {
@@ -97,7 +96,7 @@ func (c *conn) EmitWithAck(ctx context.Context, event string, body []byte) ([]by
 	defer bpool.Put(buf)
 
 	parser.EncodeEventToBuffer(buf, event, reqId, body)
-	acker := c.ackers.RegisterAck(reqId, ctx, c.closeCh)
+	acker := c.ackers.RegisterAck(ctx, reqId)
 	if err := c.conn.Write(ctx, websocket.MessageText, buf.Bytes()); err != nil {
 		return nil, err
 	}
@@ -110,8 +109,5 @@ func (c *conn) tryAck(reqId uint64, data []byte) bool {
 }
 
 func (c *conn) close() {
-	c.closeOnce.Do(func() {
-		close(c.closeCh)
-		c.closed = true
-	})
+	c.cancelCtx()
 }

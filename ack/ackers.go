@@ -12,12 +12,13 @@ const (
 
 type Ackers struct {
 	sync.Mutex
-	m map[uint64]*Acker
+	m       map[uint64]*Acker
+	connCtx context.Context
 }
 
-func (a *Ackers) RegisterAck(reqId uint64, reqCtx context.Context, closeCh chan struct{}) *Acker {
+func (a *Ackers) RegisterAck(reqCtx context.Context, reqId uint64) *Acker {
 	a.Lock()
-	acker := NewAcker(reqCtx, closeCh)
+	acker := NewAcker(a.connCtx, reqCtx)
 	a.m[reqId] = acker
 	a.Unlock()
 	return acker
@@ -31,19 +32,20 @@ func (a *Ackers) UnregisterAck(reqId uint64) {
 
 func (a *Ackers) TryAck(reqId uint64, data []byte) bool {
 	a.Lock()
-	defer a.Unlock()
-
-	if acker, ok := a.m[reqId]; ok {
+	acker, ok := a.m[reqId]
+	a.Unlock()
+	if ok {
 		acker.Notify(data)
 		return true
 	}
 	return false
 }
 
-func NewAckers() *Ackers {
+func NewAckers(connCtx context.Context) *Ackers {
 	return &Ackers{
-		Mutex: sync.Mutex{},
-		m:     make(map[uint64]*Acker),
+		Mutex:   sync.Mutex{},
+		m:       make(map[uint64]*Acker),
+		connCtx: connCtx,
 	}
 }
 

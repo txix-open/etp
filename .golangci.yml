@@ -1,27 +1,44 @@
 run:
-  tests: false
+  timeout: 2m
 
 linters:
-  enable-all: true
-  disable:
-    - goimports
-    - depguard # не используется
-    - gochecknoinits
-    - gochecknoglobals
-    - wsl
-    - gocognit
-    - godox # находит тудушки, не нужно
-    - golint # подумать, может вернуть
-    - stylecheck # подумать, может вернуть
-    - godot
-    - goerr113
-
+  disable-all: true
+  enable:
+    - asciicheck
+    - bodyclose
+    - deadcode
+    - dogsled
+    - errcheck
+    - funlen
+    - goconst
+    - gocritic
+    - gocyclo
+    - gofmt
+    - gomnd
+    - goprintffuncname
+    - gosimple
+    - govet
+    - nakedret
+    - nestif
+    - nolintlint
+    - prealloc
+    - rowserrcheck
+    - staticcheck
+    - structcheck
+    - typecheck
+    - unconvert
+    - unparam
+    - unused
+    - varcheck
+    - gosec
+    - misspell
+    - whitespace
+    - exhaustive    #смотрит на соответствие между элементами enum и swich кейсами
+    - exportloopref #for _,p := []int{1, 2, 3} { s.Bar(&p) /* If s stores the pointer, it will be bug.*/ }
+    - sqlclosecheck # Checks that sql.Rows and sql.Stmt are closed.
 linters-settings:
   maligned:
     suggest-new: true
-  lll:
-    line-length: 140
-    tab-width: 1
   funlen:
     lines: 80
     statements: 40
@@ -37,6 +54,18 @@ linters-settings:
     enabled-tags:
       - diagnostic
       - performance
-    settings:
-      hugeParam:
-        sizeThreshold: 90
+    disabled-checks:
+      - hugeParam
+      - rangeValCopy
+      - ifElseChain
+  exhaustive:
+    default-signifies-exhaustive: true
+
+issues:
+  exclude-rules:
+    - path: _test\.go # to exclude all test files for linter errcheck
+      linters:
+        - errcheck
+    - linters:
+        - gosec
+      text: "G101:"

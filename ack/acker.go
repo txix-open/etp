@@ -12,8 +12,8 @@ var (
 
 type Acker struct {
 	reqCtx      context.Context
+	connCtx     context.Context
 	ackDataChan chan []byte
-	closeCh     chan struct{}
 }
 
 func (a *Acker) Await() ([]byte, error) {
@@ -22,7 +22,7 @@ func (a *Acker) Await() ([]byte, error) {
 		return data, nil
 	case <-a.reqCtx.Done():
 		return nil, ErrRequestTimeout
-	case <-a.closeCh:
+	case <-a.connCtx.Done():
 		return nil, ErrConnClose
 	}
 }
@@ -32,14 +32,14 @@ func (a *Acker) Notify(data []byte) {
 	case a.ackDataChan <- data:
 	case <-a.reqCtx.Done():
 		return
-	case <-a.closeCh:
+	case <-a.connCtx.Done():
 		return
 	}
 }
 
-func NewAcker(reqCtx context.Context, closeCh chan struct{}) *Acker {
+func NewAcker(connCtx, reqCtx context.Context) *Acker {
 	return &Acker{
-		closeCh:     closeCh,
+		connCtx:     connCtx,
 		reqCtx:      reqCtx,
 		ackDataChan: make(chan []byte),
 	}
