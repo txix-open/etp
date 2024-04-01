@@ -6,7 +6,7 @@ import (
 	"log"
 	"net/http"
 
-	etpclient "github.com/integration-system/isp-etp-go/v2/client"
+	etpclient "github.com/txix-open/isp-etp-go/v2/client"
 	"nhooyr.io/websocket"
 )
 

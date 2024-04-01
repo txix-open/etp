@@ -1,7 +1,7 @@
 # isp-etp-go
 
-[![GitHub release (latest SemVer)](https://img.shields.io/github/v/release/integration-system/isp-etp-go?color=6b9ded&sort=semver)](https://github.com/integration-system/isp-etp-go/releases)
-[![GoDoc](https://godoc.org/github.com/integration-system/isp-etp-go?status.svg)](https://godoc.org/github.com/integration-system/isp-etp-go)
+[![GitHub release (latest SemVer)](https://img.shields.io/github/v/release/txix-open/isp-etp-go?color=6b9ded&sort=semver)](https://github.com/txix-open/isp-etp-go/releases)
+[![GoDoc](https://godoc.org/github.com/txix-open/isp-etp-go?status.svg)](https://godoc.org/github.com/txix-open/isp-etp-go)
 
 Client and server implementation of event transport protocol.
 Websocket framework based on library [github.com/nhooyr/websocket](https://github.com/nhooyr/websocket).
@@ -9,13 +9,13 @@ Websocket framework based on library [github.com/nhooyr/websocket](https://githu
 ## Install
 
 ```bash
-go get github.com/integration-system/isp-etp-go/v2
+go get github.com/txix-open/isp-etp-go/v2
 ```
 
 ## Features:
 - Rooms, broadcasting
 - Store data object for connection
-- [Javascript client](https://github.com/integration-system/isp-etp-js-client)
+- [Javascript client](https://github.com/txix-open/isp-etp-js-client)
 - Concurrent message write
 - Context based requests
 
@@ -26,7 +26,7 @@ package main
 import (
 	"context"
 	"errors"
-	"github.com/integration-system/isp-etp-go/v2"
+	"github.com/txix-open/isp-etp-go/v2"
 	"log"
 	"net/http"
 	"nhooyr.io/websocket"
@@ -95,7 +95,7 @@ package main
 import (
 	"context"
 	"errors"
-	etpclient "github.com/integration-system/isp-etp-go/v2/client"
+	etpclient "github.com/txix-open/isp-etp-go/v2/client"
 	"log"
 	"net/http"
 	"nhooyr.io/websocket"

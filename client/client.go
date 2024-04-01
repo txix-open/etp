@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/integration-system/isp-etp-go/v2/ack"
-	"github.com/integration-system/isp-etp-go/v2/bpool"
-	"github.com/integration-system/isp-etp-go/v2/gen"
-	"github.com/integration-system/isp-etp-go/v2/parser"
+	"github.com/txix-open/isp-etp-go/v2/ack"
+	"github.com/txix-open/isp-etp-go/v2/bpool"
+	"github.com/txix-open/isp-etp-go/v2/gen"
+	"github.com/txix-open/isp-etp-go/v2/parser"
 	"nhooyr.io/websocket"
 )
 
