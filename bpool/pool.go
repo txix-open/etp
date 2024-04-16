@@ -5,17 +5,18 @@ import (
 	"sync"
 )
 
-var bpool sync.Pool
+var (
+	bpool = sync.Pool{New: func() any {
+		return bytes.NewBuffer(make([]byte, 1024))
+	}}
+)
 
 func Get() *bytes.Buffer {
-	b, ok := bpool.Get().(*bytes.Buffer)
-	if !ok {
-		b = bytes.NewBuffer(make([]byte, 0, 4096))
-	}
+	b := bpool.Get().(*bytes.Buffer)
+	b.Reset()
 	return b
 }
 
 func Put(b *bytes.Buffer) {
-	b.Reset()
 	bpool.Put(b)
 }

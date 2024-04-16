@@ -2,112 +2,96 @@ package etp
 
 import (
 	"context"
+	"fmt"
 	"net/http"
-	"net/url"
-	"sync/atomic"
 
-	"github.com/txix-open/isp-etp-go/v2/ack"
-	"github.com/txix-open/isp-etp-go/v2/bpool"
-	"github.com/txix-open/isp-etp-go/v2/gen"
-	"github.com/txix-open/isp-etp-go/v2/parser"
+	"github.com/txix-open/etp/v3/bpool"
+	"github.com/txix-open/etp/v3/internal"
+	"github.com/txix-open/etp/v3/msg"
 	"nhooyr.io/websocket"
 )
 
-type Conn interface {
-	ID() string
-	Close() error
-	URL() *url.URL
-	RemoteAddr() string
-	RemoteHeader() http.Header
-	Context() interface{}
-	SetContext(v interface{})
-	Ping(ctx context.Context) error
-	Emit(ctx context.Context, event string, body []byte) error
-	EmitWithAck(ctx context.Context, event string, body []byte) ([]byte, error)
-	Closed() bool
+type Conn struct {
+	id      uint64
+	request *http.Request
+	ws      *websocket.Conn
+	acks    *internal.Acks
 }
 
-const (
-	// TODO
-	defaultCloseReason = ""
-)
-
-type conn struct {
-	conn       *websocket.Conn
-	id         string
-	header     http.Header
-	remoteAddr string
-	url        *url.URL
-	context    atomic.Value
-	gen        gen.ReqIdGenerator
-	ackers     *ack.Ackers
-	connCtx    context.Context
-	cancelCtx  func()
+func newConn(
+	id uint64,
+	request *http.Request,
+	ws *websocket.Conn,
+) *Conn {
+	return &Conn{
+		id:      id,
+		request: request,
+		ws:      ws,
+		acks:    internal.NewAcks(),
+	}
 }
 
-func (c *conn) ID() string {
+func (c *Conn) Id() uint64 {
 	return c.id
 }
 
-func (c *conn) Close() error {
-	defer c.close()
-	return c.conn.Close(websocket.StatusNormalClosure, defaultCloseReason)
+func (c *Conn) HttpRequest() *http.Request {
+	return c.request
 }
 
-func (c *conn) Closed() bool {
-	return c.connCtx.Err() != nil
+func (c *Conn) Emit(ctx context.Context, event string, data []byte) error {
+	message := msg.Event{
+		Name:  event,
+		AckId: 0,
+		Data:  data,
+	}
+	return c.emit(ctx, message)
 }
 
-func (c *conn) URL() *url.URL {
-	return c.url
-}
+func (c *Conn) EmitWithAck(ctx context.Context, event string, data []byte) ([]byte, error) {
+	ack := c.acks.NextAck()
+	defer c.acks.DeleteAck(ack.Id())
 
-func (c *conn) RemoteAddr() string {
-	return c.remoteAddr
-}
-
-func (c *conn) RemoteHeader() http.Header {
-	return c.header
-}
-
-func (c *conn) Context() interface{} {
-	return c.context.Load()
-}
-
-func (c *conn) SetContext(v interface{}) {
-	c.context.Store(v)
-}
-
-func (c *conn) Ping(ctx context.Context) error {
-	return c.conn.Ping(ctx)
-}
-
-func (c *conn) Emit(ctx context.Context, event string, body []byte) error {
-	buf := bpool.Get()
-	defer bpool.Put(buf)
-	parser.EncodeEventToBuffer(buf, event, 0, body)
-	return c.conn.Write(ctx, websocket.MessageText, buf.Bytes())
-}
-
-func (c *conn) EmitWithAck(ctx context.Context, event string, body []byte) ([]byte, error) {
-	reqId := c.gen.NewID()
-	defer c.ackers.UnregisterAck(reqId)
-	buf := bpool.Get()
-	defer bpool.Put(buf)
-
-	parser.EncodeEventToBuffer(buf, event, reqId, body)
-	acker := c.ackers.RegisterAck(ctx, reqId)
-	if err := c.conn.Write(ctx, websocket.MessageText, buf.Bytes()); err != nil {
+	message := msg.Event{
+		Name:  event,
+		AckId: ack.Id(),
+		Data:  data,
+	}
+	err := c.emit(ctx, message)
+	if err != nil {
 		return nil, err
 	}
 
-	return acker.Await()
+	response, err := ack.Wait(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to wait ack: %w", err)
+	}
+
+	return response, nil
 }
 
-func (c *conn) tryAck(reqId uint64, data []byte) bool {
-	return c.ackers.TryAck(reqId, data)
+func (c *Conn) Ping(ctx context.Context) error {
+	return c.ws.Ping(ctx)
 }
 
-func (c *conn) close() {
-	c.cancelCtx()
+func (c *Conn) Close() error {
+	return c.ws.CloseNow()
+}
+
+func (c *Conn) emit(ctx context.Context, event msg.Event) error {
+	buff := bpool.Get()
+	defer bpool.Put(buff)
+
+	msg.EncodeEvent(buff, event)
+
+	err := c.ws.Write(ctx, websocket.MessageText, buff.Bytes())
+	if err != nil {
+		return fmt.Errorf("failed to write event: %w", err)
+	}
+
+	return nil
+}
+
+func (c *Conn) notifyAck(ackId uint64, data []byte) {
+	c.acks.NotifyAck(ackId, data)
 }

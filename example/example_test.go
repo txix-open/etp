@@ -1,38 +1,4 @@
-# etp
-[![GoDoc](https://godoc.org/github.com/txix-open/etp/v3?status.svg)](https://godoc.org/github.com/txix-open/etp/v3)
-![Build and test](https://github.com/txix-open/etp/actions/workflows/main.yml/badge.svg)
-[![codecov](https://codecov.io/gh/txix-open/etp/branch/master/graph/badge.svg?token=JMTTJ5O6WB)](https://codecov.io/gh/txix-open/etp)
-[![Go Report Card](https://goreportcard.com/badge/github.com/txix-open/etp)](https://goreportcard.com/report/github.com/txix-open/etp)
-
-ETP - event transport protocol on WebSocket, simple and powerful.
-
-Highly inspired by [socket.io](https://socket.io/). But there is no good implementation in Go, that is why `etp` exists.
-
-The package based on [github.com/nhooyr/websocket](https://github.com/nhooyr/websocket).
-
-## Install
-
-```bash
-go get -u github.com/txix-open/etp/v3
-```
-
-## Features:
-- Rooms for server
-- [Javascript client](https://github.com/txix-open/isp-etp-js-client)
-- Concurrent event emitting
-- Context based API
-- Event acknowledgment (for sync communication)
-
-## Internals
-- WebSocket message
-  - `websocket.MessageText` (not binary)
-  - `<eventName>||<ackId>||<eventData>`
-- Each event is handled concurrently in separated goroutine
-- Message limit is `1MB` by default
-
-## Complete example
-```go
-package main
+package example_test
 
 import (
 	"context"
@@ -45,7 +11,7 @@ import (
 	"nhooyr.io/websocket"
 )
 
-func main() {
+func ExampleServer() {
 	srv := etp.NewServer(etp.WithServerAcceptOptions(&websocket.AcceptOptions{
 		InsecureSkipVerify: true, //completely ignore CORS checks, enable only for dev purposes
 	}))
@@ -134,27 +100,3 @@ func main() {
 
 	time.Sleep(1 * time.Second)
 }
-```
-
-## V3 Migration
-* Internal message format is the same as `v2`
-* Each event now is handled in separated goroutine (completely async)
-* Significantly reduce code base, removed redundant interfaces
-* Fixed some memory leaks and potential deadlocks
-* Main package `github.com/txix-open/isp-etp-go/v2` -> `github.com/txix-open/etp/v3`
-* `OnDefault` -> `OnUnknownEvent`
-* `On*` API are the same either `etp.Client` and `etp.Server`
-* WAS
-```go
-srv.On("event", func(conn etp.Conn, data []byte) {
-			log.Println("Received " + testEvent + ":" + string(data))
-}).
-```
-* BECOME
-```go
-srv.On("hello", etp.HandlerFunc(func(ctx context.Context, conn *etp.Conn, event msg.Event) []byte {
-		fmt.Printf("hello event received: %s, %s\n", event.Name, event.Data)
-		return []byte("hello handled")
-}))
-```
-The second param now is a interface.

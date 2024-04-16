@@ -1,3 +1,5 @@
+### v3.0.0
+* fully reimplemented with API change (see Migrated to V3 in README.MD)
 ### v2.1.3
 - client: fully process workers channel before closing connection
 - fix closing server connection
