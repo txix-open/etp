@@ -17,20 +17,20 @@ var (
 type Client struct {
 	mux         *mux
 	idGenerator *internal.IdGenerator
-	clientOpts  *ClientOptions
+	opts        *clientOptions
 	conn        *Conn
 	lock        sync.Locker
 }
 
 func NewClient(opts ...ClientOption) *Client {
-	options := DefaultClientOptions()
+	options := defaultClientOptions()
 	for _, opt := range opts {
 		opt(options)
 	}
 	return &Client{
 		mux:         newMux(),
 		idGenerator: internal.NewIdGenerator(),
-		clientOpts:  options,
+		opts:        options,
 		lock:        &sync.Mutex{},
 		conn:        nil,
 	}
@@ -61,7 +61,7 @@ func (c *Client) OnUnknownEvent(handler Handler) *Client {
 	return c
 }
 
-func (c *Client) Dial(url string) error {
+func (c *Client) Dial(ctx context.Context, url string) error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
@@ -69,12 +69,12 @@ func (c *Client) Dial(url string) error {
 		return errors.New("already connected")
 	}
 
-	ws, resp, err := websocket.Dial(context.Background(), url, c.clientOpts.dialOptions)
+	ws, resp, err := websocket.Dial(ctx, url, c.opts.dialOptions)
 	if err != nil {
 		return fmt.Errorf("websocket dial: %w", err)
 	}
 
-	ws.SetReadLimit(c.clientOpts.readLimit)
+	ws.SetReadLimit(c.opts.readLimit)
 
 	id := c.idGenerator.Next()
 	conn := newConn(id, resp.Request, ws)
@@ -82,7 +82,9 @@ func (c *Client) Dial(url string) error {
 
 	keeper := newKeeper(conn, c.mux)
 	go func() {
-		defer conn.Close()
+		defer func() {
+			_ = ws.CloseNow()
+		}()
 
 		keeper.Serve(context.Background())
 

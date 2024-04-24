@@ -75,7 +75,7 @@ func (c *Conn) Ping(ctx context.Context) error {
 }
 
 func (c *Conn) Close() error {
-	return c.ws.CloseNow()
+	return c.ws.Close(websocket.StatusNormalClosure, "")
 }
 
 func (c *Conn) emit(ctx context.Context, event msg.Event) error {

@@ -17,22 +17,6 @@ func newRooms() *Rooms {
 	}
 }
 
-func (s *Rooms) Add(conn *Conn) {
-	s.Join(conn, idsRoom)
-}
-
-func (s *Rooms) Remove(conn *Conn) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	for room, conns := range s.rooms {
-		delete(conns, conn.Id())
-		if len(conns) == 0 {
-			delete(s.rooms, room)
-		}
-	}
-}
-
 func (s *Rooms) Get(connId uint64) (*Conn, bool) {
 	s.mu.RLock()
 	var (
@@ -117,4 +101,20 @@ func (s *Rooms) ToBroadcast(rooms ...string) []*Conn {
 
 func (s *Rooms) AllConns() []*Conn {
 	return s.ToBroadcast(idsRoom)
+}
+
+func (s *Rooms) add(conn *Conn) {
+	s.Join(conn, idsRoom)
+}
+
+func (s *Rooms) remove(conn *Conn) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for room, conns := range s.rooms {
+		delete(conns, conn.Id())
+		if len(conns) == 0 {
+			delete(s.rooms, room)
+		}
+	}
 }

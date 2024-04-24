@@ -8,27 +8,29 @@ const (
 	defaultReadLimit = 1 * 1024 * 1024
 )
 
-type ServerOption func(*ServerOptions)
+type AcceptOptions = websocket.AcceptOptions
 
-type ServerOptions struct {
-	acceptOptions *websocket.AcceptOptions
+type ServerOption func(*serverOptions)
+
+type serverOptions struct {
+	acceptOptions *AcceptOptions
 	readLimit     int64
 }
 
-func DefaultServerOptions() *ServerOptions {
-	return &ServerOptions{
+func defaultServerOptions() *serverOptions {
+	return &serverOptions{
 		readLimit: defaultReadLimit,
 	}
 }
 
-func WithServerAcceptOptions(opts *websocket.AcceptOptions) ServerOption {
-	return func(options *ServerOptions) {
+func WithServerAcceptOptions(opts *AcceptOptions) ServerOption {
+	return func(options *serverOptions) {
 		options.acceptOptions = opts
 	}
 }
 
 func WithServerReadLimit(limit int64) ServerOption {
-	return func(options *ServerOptions) {
+	return func(options *serverOptions) {
 		options.readLimit = limit
 	}
 }

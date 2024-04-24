@@ -4,27 +4,29 @@ import (
 	"nhooyr.io/websocket"
 )
 
-type ClientOption func(*ClientOptions)
+type DialOptions = websocket.DialOptions
 
-type ClientOptions struct {
-	dialOptions *websocket.DialOptions
+type ClientOption func(*clientOptions)
+
+type clientOptions struct {
+	dialOptions *DialOptions
 	readLimit   int64
 }
 
-func DefaultClientOptions() *ClientOptions {
-	return &ClientOptions{
+func defaultClientOptions() *clientOptions {
+	return &clientOptions{
 		readLimit: defaultReadLimit,
 	}
 }
 
-func WithClientDialOptions(opts *websocket.DialOptions) ClientOption {
-	return func(o *ClientOptions) {
+func WithClientDialOptions(opts *DialOptions) ClientOption {
+	return func(o *clientOptions) {
 		o.dialOptions = opts
 	}
 }
 
 func WithClientReadLimit(limit int64) ClientOption {
-	return func(o *ClientOptions) {
+	return func(o *clientOptions) {
 		o.readLimit = limit
 	}
 }

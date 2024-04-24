@@ -12,11 +12,11 @@ type Server struct {
 	idGenerator *internal.IdGenerator
 	mux         *mux
 	rooms       *Rooms
-	opts        *ServerOptions
+	opts        *serverOptions
 }
 
 func NewServer(opts ...ServerOption) *Server {
-	options := DefaultServerOptions()
+	options := defaultServerOptions()
 	for _, opt := range opts {
 		opt(options)
 	}
@@ -72,9 +72,15 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	id := s.idGenerator.Next()
 	conn := newConn(id, r, ws)
 
-	s.rooms.Add(conn)
-	defer s.rooms.Remove(conn)
+	s.rooms.add(conn)
+	defer s.rooms.remove(conn)
 
 	keeper := newKeeper(conn, s.mux)
 	keeper.Serve(r.Context())
+}
+
+func (s *Server) Shutdown() {
+	for _, conn := range s.rooms.AllConns() {
+		_ = conn.Close()
+	}
 }
