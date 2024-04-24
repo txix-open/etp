@@ -8,11 +8,10 @@ import (
 
 	"github.com/txix-open/etp/v3"
 	"github.com/txix-open/etp/v3/msg"
-	"nhooyr.io/websocket"
 )
 
 func ExampleServer() {
-	srv := etp.NewServer(etp.WithServerAcceptOptions(&websocket.AcceptOptions{
+	srv := etp.NewServer(etp.WithServerAcceptOptions(&etp.AcceptOptions{
 		InsecureSkipVerify: true, //completely ignore CORS checks, enable only for dev purposes
 	}))
 

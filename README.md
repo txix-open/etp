@@ -1,8 +1,9 @@
 # etp
+
 [![GoDoc](https://godoc.org/github.com/txix-open/etp/v3?status.svg)](https://godoc.org/github.com/txix-open/etp/v3)
 ![Build and test](https://github.com/txix-open/etp/actions/workflows/main.yml/badge.svg)
 [![codecov](https://codecov.io/gh/txix-open/etp/branch/master/graph/badge.svg?token=JMTTJ5O6WB)](https://codecov.io/gh/txix-open/etp)
-[![Go Report Card](https://goreportcard.com/badge/github.com/txix-open/etp)](https://goreportcard.com/report/github.com/txix-open/etp)
+[![Go Report Card](https://goreportcard.com/badge/github.com/txix-open/etp/v3)](https://goreportcard.com/report/github.com/txix-open/etp/v3)
 
 ETP - event transport protocol on WebSocket, simple and powerful.
 
@@ -25,12 +26,13 @@ go get -u github.com/txix-open/etp/v3
 
 ## Internals
 - WebSocket message
-  - `websocket.MessageText` (not binary)
-  - `<eventName>||<ackId>||<eventData>`
+    - `websocket.MessageText` (not binary)
+    - `<eventName>||<ackId>||<eventData>`
 - Each event is handled concurrently in separated goroutine
 - Message limit is `1MB` by default
 
 ## Complete example
+
 ```go
 package main
 
@@ -42,11 +44,10 @@ import (
 
 	"github.com/txix-open/etp/v3"
 	"github.com/txix-open/etp/v3/msg"
-	"nhooyr.io/websocket"
 )
 
-func ExampleServer() {
-	srv := etp.NewServer(etp.WithServerAcceptOptions(&websocket.AcceptOptions{
+func main() {
+	srv := etp.NewServer(etp.WithServerAcceptOptions(&etp.AcceptOptions{
 		InsecureSkipVerify: true, //completely ignore CORS checks, enable only for dev purposes
 	}))
 
@@ -140,6 +141,7 @@ func ExampleServer() {
 ```
 
 ## V3 Migration
+
 * Internal message format is the same as `v2`
 * Each event now is handled in separated goroutine (completely async)
 * Significantly reduce code base, removed redundant interfaces
@@ -148,16 +150,20 @@ func ExampleServer() {
 * `OnDefault` -> `OnUnknownEvent`
 * `On*` API are the same either `etp.Client` and `etp.Server`
 * WAS
+
 ```go
-srv.On("event", func(conn etp.Conn, data []byte) {
-			log.Println("Received " + testEvent + ":" + string(data))
+srv.On("event", func (conn etp.Conn, data []byte) {
+    log.Println("Received " + testEvent + ":" + string(data))
 }).
 ```
+
 * BECOME
+
 ```go
 srv.On("hello", etp.HandlerFunc(func(ctx context.Context, conn *etp.Conn, event msg.Event) []byte {
-		fmt.Printf("hello event received: %s, %s\n", event.Name, event.Data)
-		return []byte("hello handled")
+    fmt.Printf("hello event received: %s, %s\n", event.Name, event.Data)
+    return []byte("hello handled")
 }))
 ```
+
 The second param now is a interface.
