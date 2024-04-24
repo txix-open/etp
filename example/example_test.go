@@ -25,7 +25,7 @@ func ExampleServer() {
 
 	//callback to handle disconnection
 	srv.OnDisconnect(func(conn *etp.Conn, err error) {
-		fmt.Println("disconnected", conn.Id(), err)
+		fmt.Println("disconnected", conn.Id(), err, etp.IsNormalClose(err))
 	})
 
 	//callback to handle any error during serving
@@ -66,7 +66,7 @@ func ExampleServer() {
 		OnDisconnect(func(conn *etp.Conn, err error) { //basically you have all handlers like a server here
 			fmt.Println("client disconnected", conn.Id(), err)
 		})
-	err := cli.Dial("ws://localhost:8080/ws")
+	err := cli.Dial(context.Background(), "ws://localhost:8080/ws")
 	if err != nil {
 		panic(err)
 	}
@@ -98,5 +98,8 @@ func ExampleServer() {
 		panic(err)
 	}
 
-	time.Sleep(1 * time.Second)
+	time.Sleep(15 * time.Second)
+
+	//call to disconnect all clients
+	srv.Shutdown()
 }
