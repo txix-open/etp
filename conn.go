@@ -8,6 +8,7 @@ import (
 	"github.com/txix-open/etp/v3/bpool"
 	"github.com/txix-open/etp/v3/internal"
 	"github.com/txix-open/etp/v3/msg"
+	"github.com/txix-open/etp/v3/store"
 	"nhooyr.io/websocket"
 )
 
@@ -15,6 +16,7 @@ type Conn struct {
 	id      uint64
 	request *http.Request
 	ws      *websocket.Conn
+	data    *store.Store
 	acks    *internal.Acks
 }
 
@@ -27,6 +29,7 @@ func newConn(
 		id:      id,
 		request: request,
 		ws:      ws,
+		data:    store.New(),
 		acks:    internal.NewAcks(),
 	}
 }
@@ -37,6 +40,10 @@ func (c *Conn) Id() uint64 {
 
 func (c *Conn) HttpRequest() *http.Request {
 	return c.request
+}
+
+func (c *Conn) Data() *store.Store {
+	return c.data
 }
 
 func (c *Conn) Emit(ctx context.Context, event string, data []byte) error {
