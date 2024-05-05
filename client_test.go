@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/txix-open/etp/v3"
 	"github.com/txix-open/etp/v3/msg"
+	"github.com/txix-open/etp/v3/store"
 	"nhooyr.io/websocket"
 )
 
@@ -69,8 +70,14 @@ func TestClientHeavyConcurrency(t *testing.T) {
 		srv.Rooms().Join(conn, "connections")
 		err := conn.Emit(context.Background(), "hello", nil)
 		require.NoError(err)
+
+		conn.Data().Set("key", conn.Id())
 	}).On("closeMe", etp.HandlerFunc(func(ctx context.Context, conn *etp.Conn, event msg.Event) []byte {
-		err := conn.Close()
+		connId, err := store.Get[uint64](conn.Data(), "key")
+		require.NoError(err)
+		require.Equal(conn.Id(), connId)
+
+		err = conn.Close()
 		require.NoError(err)
 		return nil
 	})).OnDisconnect(srvHandler.OnDisconnect)
