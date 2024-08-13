@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/coder/websocket"
 	"github.com/txix-open/etp/v3/bpool"
 	"github.com/txix-open/etp/v3/internal"
 	"github.com/txix-open/etp/v3/msg"
 	"github.com/txix-open/etp/v3/store"
-	"nhooyr.io/websocket"
 )
 
 type Conn struct {

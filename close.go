@@ -3,7 +3,7 @@ package etp
 import (
 	"errors"
 
-	"nhooyr.io/websocket"
+	"github.com/coder/websocket"
 )
 
 func IsNormalClose(err error) bool {

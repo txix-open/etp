@@ -9,10 +9,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/coder/websocket"
 	"github.com/stretchr/testify/require"
 	"github.com/txix-open/etp/v3"
 	"github.com/txix-open/etp/v3/msg"
-	"nhooyr.io/websocket"
 )
 
 type CallHandler struct {

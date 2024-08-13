@@ -1,7 +1,7 @@
 package etp
 
 import (
-	"nhooyr.io/websocket"
+	"github.com/coder/websocket"
 )
 
 const (
