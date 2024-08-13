@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/coder/websocket"
 	"github.com/txix-open/etp/v3/internal"
-	"nhooyr.io/websocket"
 )
 
 var (

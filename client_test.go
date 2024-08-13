@@ -8,11 +8,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/coder/websocket"
 	"github.com/stretchr/testify/require"
 	"github.com/txix-open/etp/v3"
 	"github.com/txix-open/etp/v3/msg"
 	"github.com/txix-open/etp/v3/store"
-	"nhooyr.io/websocket"
 )
 
 func TestClient_OnDisconnect(t *testing.T) {
