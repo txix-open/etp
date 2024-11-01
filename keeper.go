@@ -3,8 +3,8 @@ package etp
 import (
 	"context"
 
-	"github.com/txix-open/etp/v3/internal"
-	"github.com/txix-open/etp/v3/msg"
+	"github.com/txix-open/etp/v4/internal"
+	"github.com/txix-open/etp/v4/msg"
 )
 
 type keeper struct {

@@ -4,10 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sync"
-
 	"github.com/coder/websocket"
-	"github.com/txix-open/etp/v3/internal"
+	"github.com/txix-open/etp/v4/internal"
+	"sync"
+	"sync/atomic"
 )
 
 var (
@@ -18,7 +18,7 @@ type Client struct {
 	mux         *mux
 	idGenerator *internal.IdGenerator
 	opts        *clientOptions
-	conn        *Conn
+	conn        *atomic.Pointer[Conn]
 	lock        sync.Locker
 }
 
@@ -32,7 +32,7 @@ func NewClient(opts ...ClientOption) *Client {
 		idGenerator: internal.NewIdGenerator(),
 		opts:        options,
 		lock:        &sync.Mutex{},
-		conn:        nil,
+		conn:        &atomic.Pointer[Conn]{},
 	}
 }
 
@@ -65,7 +65,7 @@ func (c *Client) Dial(ctx context.Context, url string) error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
-	if c.conn != nil {
+	if c.conn.Load() != nil {
 		return errors.New("already connected")
 	}
 
@@ -78,7 +78,7 @@ func (c *Client) Dial(ctx context.Context, url string) error {
 
 	id := c.idGenerator.Next()
 	conn := newConn(id, resp.Request, ws)
-	c.conn = conn
+	c.conn.Store(conn)
 
 	keeper := newKeeper(conn, c.mux)
 	go func() {
@@ -90,43 +90,48 @@ func (c *Client) Dial(ctx context.Context, url string) error {
 
 		c.lock.Lock()
 		defer c.lock.Unlock()
-		if c.conn != nil && c.conn.Id() == id {
-			c.conn = nil
+		conn := c.conn.Load()
+		if conn != nil && conn.Id() == id {
+			c.conn.Store(nil)
 		}
 	}()
 	return nil
 }
 
 func (c *Client) Emit(ctx context.Context, event string, data []byte) error {
-	if c.conn == nil {
+	conn := c.conn.Load()
+	if conn == nil {
 		return ErrClientClosed
 	}
-	return c.conn.Emit(ctx, event, data)
+	return conn.Emit(ctx, event, data)
 }
 
 func (c *Client) EmitWithAck(ctx context.Context, event string, data []byte) ([]byte, error) {
-	if c.conn == nil {
+	conn := c.conn.Load()
+	if conn == nil {
 		return nil, ErrClientClosed
 	}
-	return c.conn.EmitWithAck(ctx, event, data)
+	return conn.EmitWithAck(ctx, event, data)
 }
 
 func (c *Client) Ping(ctx context.Context) error {
-	if c.conn == nil {
+	conn := c.conn.Load()
+	if conn == nil {
 		return ErrClientClosed
 	}
-	return c.conn.Ping(ctx)
+	return conn.Ping(ctx)
 }
 
 func (c *Client) Close() error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
-	if c.conn == nil {
+	conn := c.conn.Load()
+	if conn == nil {
 		return ErrClientClosed
 	}
 
-	err := c.conn.Close()
-	c.conn = nil
+	err := conn.Close()
+	c.conn.Store(nil)
 	return err
 }

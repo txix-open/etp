@@ -10,9 +10,9 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/stretchr/testify/require"
-	"github.com/txix-open/etp/v3"
-	"github.com/txix-open/etp/v3/msg"
-	"github.com/txix-open/etp/v3/store"
+	"github.com/txix-open/etp/v4"
+	"github.com/txix-open/etp/v4/msg"
+	"github.com/txix-open/etp/v4/store"
 )
 
 func TestClient_OnDisconnect(t *testing.T) {
@@ -73,7 +73,7 @@ func TestClientHeavyConcurrency(t *testing.T) {
 
 		conn.Data().Set("key", conn.Id())
 	}).On("closeMe", etp.HandlerFunc(func(ctx context.Context, conn *etp.Conn, event msg.Event) []byte {
-		connId, err := store.Get[uint64](conn.Data(), "key")
+		connId, err := store.Get[string](conn.Data(), "key")
 		require.NoError(err)
 		require.Equal(conn.Id(), connId)
 

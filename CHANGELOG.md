@@ -1,3 +1,5 @@
+### v4.0.0
+* change conn id type to string, generate it from `crypto/rand`
 ### v3.0.0
 * fully reimplemented with API change (see Migrated to V3 in README.MD)
 ### v2.1.3
