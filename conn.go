@@ -6,14 +6,14 @@ import (
 	"net/http"
 
 	"github.com/coder/websocket"
-	"github.com/txix-open/etp/v3/bpool"
-	"github.com/txix-open/etp/v3/internal"
-	"github.com/txix-open/etp/v3/msg"
-	"github.com/txix-open/etp/v3/store"
+	"github.com/txix-open/etp/v4/bpool"
+	"github.com/txix-open/etp/v4/internal"
+	"github.com/txix-open/etp/v4/msg"
+	"github.com/txix-open/etp/v4/store"
 )
 
 type Conn struct {
-	id      uint64
+	id      string
 	request *http.Request
 	ws      *websocket.Conn
 	data    *store.Store
@@ -21,7 +21,7 @@ type Conn struct {
 }
 
 func newConn(
-	id uint64,
+	id string,
 	request *http.Request,
 	ws *websocket.Conn,
 ) *Conn {
@@ -34,7 +34,7 @@ func newConn(
 	}
 }
 
-func (c *Conn) Id() uint64 {
+func (c *Conn) Id() string {
 	return c.id
 }
 

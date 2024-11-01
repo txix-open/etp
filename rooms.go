@@ -8,16 +8,16 @@ const (
 
 type Rooms struct {
 	mu    sync.RWMutex
-	rooms map[string]map[uint64]*Conn
+	rooms map[string]map[string]*Conn
 }
 
 func newRooms() *Rooms {
 	return &Rooms{
-		rooms: make(map[string]map[uint64]*Conn),
+		rooms: make(map[string]map[string]*Conn),
 	}
 }
 
-func (s *Rooms) Get(connId uint64) (*Conn, bool) {
+func (s *Rooms) Get(connId string) (*Conn, bool) {
 	s.mu.RLock()
 	var (
 		conn *Conn
@@ -37,7 +37,7 @@ func (s *Rooms) Join(conn *Conn, rooms ...string) {
 		if conns, ok := s.rooms[room]; ok {
 			conns[conn.Id()] = conn
 		} else {
-			s.rooms[room] = map[uint64]*Conn{
+			s.rooms[room] = map[string]*Conn{
 				conn.Id(): conn,
 			}
 		}
@@ -45,7 +45,7 @@ func (s *Rooms) Join(conn *Conn, rooms ...string) {
 	s.mu.Unlock()
 }
 
-func (s *Rooms) LeaveByConnId(id uint64, rooms ...string) {
+func (s *Rooms) LeaveByConnId(id string, rooms ...string) {
 	s.mu.Lock()
 	for _, room := range rooms {
 		if conns, ok := s.rooms[room]; ok {

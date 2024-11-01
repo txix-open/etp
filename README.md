@@ -1,9 +1,9 @@
 # etp
 
-[![GoDoc](https://godoc.org/github.com/txix-open/etp/v3?status.svg)](https://godoc.org/github.com/txix-open/etp/v3)
+[![GoDoc](https://godoc.org/github.com/txix-open/etp/v4?status.svg)](https://godoc.org/github.com/txix-open/etp/v4)
 ![Build and test](https://github.com/txix-open/etp/actions/workflows/main.yml/badge.svg)
 [![codecov](https://codecov.io/gh/txix-open/etp/branch/master/graph/badge.svg?token=JMTTJ5O6WB)](https://codecov.io/gh/txix-open/etp)
-[![Go Report Card](https://goreportcard.com/badge/github.com/txix-open/etp/v3)](https://goreportcard.com/report/github.com/txix-open/etp/v3)
+[![Go Report Card](https://goreportcard.com/badge/github.com/txix-open/etp/v4)](https://goreportcard.com/report/github.com/txix-open/etp/v4)
 
 ETP - event transport protocol on WebSocket, simple and powerful.
 
@@ -14,7 +14,7 @@ The package based on [github.com/nhooyr/websocket](https://github.com/nhooyr/web
 ## Install
 
 ```bash
-go get -u github.com/txix-open/etp/v3
+go get -u github.com/txix-open/etp/v4
 ```
 
 ## Features:
@@ -42,8 +42,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/txix-open/etp/v3"
-	"github.com/txix-open/etp/v3/msg"
+	"github.com/txix-open/etp/v4"
+	"github.com/txix-open/etp/v4/msg"
 )
 
 func main() {
@@ -148,7 +148,7 @@ func main() {
 * Each event now is handled in separated goroutine (completely async)
 * Significantly reduce code base, removed redundant interfaces
 * Fixed some memory leaks and potential deadlocks
-* Main package `github.com/txix-open/isp-etp-go/v2` -> `github.com/txix-open/etp/v3`
+* Main package `github.com/txix-open/isp-etp-go/v2` -> `github.com/txix-open/etp/v4`
 * `OnDefault` -> `OnUnknownEvent`
 * `On*` API are the same either `etp.Client` and `etp.Server`
 * WAS

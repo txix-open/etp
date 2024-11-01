@@ -24,6 +24,13 @@ func (s *Store) Set(key string, value any) {
 	s.data[key] = value
 }
 
+func (s *Store) Get(key string) any {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+
+	return s.data[key]
+}
+
 func (s *Store) Range(f func(key string, value any) bool) {
 	s.lock.Lock()
 	defer s.lock.Unlock()

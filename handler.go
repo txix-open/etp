@@ -4,7 +4,7 @@ import (
 	"context"
 	"sync"
 
-	"github.com/txix-open/etp/v3/msg"
+	"github.com/txix-open/etp/v4/msg"
 )
 
 type Handler interface {

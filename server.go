@@ -5,7 +5,7 @@ import (
 	"net/http"
 
 	"github.com/coder/websocket"
-	"github.com/txix-open/etp/v3/internal"
+	"github.com/txix-open/etp/v4/internal"
 )
 
 type Server struct {

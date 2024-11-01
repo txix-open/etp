@@ -1,6 +1,6 @@
-module github.com/txix-open/etp/v3
+module github.com/txix-open/etp/v4
 
-go 1.22
+go 1.23
 
 require github.com/coder/websocket v1.8.12
 

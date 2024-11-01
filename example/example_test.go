@@ -6,8 +6,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/txix-open/etp/v3"
-	"github.com/txix-open/etp/v3/msg"
+	"github.com/txix-open/etp/v4"
+	"github.com/txix-open/etp/v4/msg"
 )
 
 func ExampleServer() {
@@ -18,7 +18,7 @@ func ExampleServer() {
 	//callback to handle new connection
 	srv.OnConnect(func(conn *etp.Conn) {
 		//you have access to original HTTP request
-		fmt.Printf("id: %d, url: %s, connected\n", conn.Id(), conn.HttpRequest().URL)
+		fmt.Printf("id: %s, url: %s, connected\n", conn.Id(), conn.HttpRequest().URL)
 		srv.Rooms().Join(conn, "goodClients") //leave automatically then disconnected
 
 		conn.Data().Set("key", "value") //put any data associative with connection
@@ -31,7 +31,7 @@ func ExampleServer() {
 
 	//callback to handle any error during serving
 	srv.OnError(func(conn *etp.Conn, err error) {
-		connId := uint64(0)
+		connId := ""
 		// be careful, conn can be nil on upgrading protocol error (before success WebSocket connection)
 		if conn != nil {
 			connId = conn.Id()

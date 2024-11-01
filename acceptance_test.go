@@ -11,8 +11,8 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/stretchr/testify/require"
-	"github.com/txix-open/etp/v3"
-	"github.com/txix-open/etp/v3/msg"
+	"github.com/txix-open/etp/v4"
+	"github.com/txix-open/etp/v4/msg"
 )
 
 type CallHandler struct {

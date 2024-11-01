@@ -7,14 +7,14 @@ import (
 type Acks struct {
 	lock        sync.Locker
 	acks        map[uint64]*Ack
-	idGenerator *IdGenerator
+	idGenerator *SequenceGenerator
 }
 
 func NewAcks() *Acks {
 	return &Acks{
 		lock:        &sync.Mutex{},
 		acks:        make(map[uint64]*Ack),
-		idGenerator: NewIdGenerator(),
+		idGenerator: NewSequenceGenerator(),
 	}
 }
 
