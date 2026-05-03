@@ -18,12 +18,14 @@ type Conn struct {
 	ws      *websocket.Conn
 	data    *store.Store
 	acks    *internal.Acks
+	codec   msg.Codec
 }
 
 func newConn(
 	id string,
 	request *http.Request,
 	ws *websocket.Conn,
+	codec msg.Codec,
 ) *Conn {
 	return &Conn{
 		id:      id,
@@ -31,6 +33,7 @@ func newConn(
 		ws:      ws,
 		data:    store.New(),
 		acks:    internal.NewAcks(),
+		codec:   codec,
 	}
 }
 
@@ -89,7 +92,7 @@ func (c *Conn) emit(ctx context.Context, event msg.Event) error {
 	buff := bpool.Get()
 	defer bpool.Put(buff)
 
-	msg.EncodeEvent(buff, event)
+	c.codec.EncodeEvent(buff, event)
 
 	err := c.ws.Write(ctx, websocket.MessageText, buff.Bytes())
 	if err != nil {

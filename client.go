@@ -4,10 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/coder/websocket"
-	"github.com/txix-open/etp/v4/internal"
+
 	"sync"
 	"sync/atomic"
+
+	"github.com/coder/websocket"
+	"github.com/txix-open/etp/v4/internal"
 )
 
 var (
@@ -31,8 +33,8 @@ func NewClient(opts ...ClientOption) *Client {
 		mux:         newMux(),
 		idGenerator: internal.NewIdGenerator(),
 		opts:        options,
-		lock:        &sync.Mutex{},
 		conn:        &atomic.Pointer[Conn]{},
+		lock:        &sync.Mutex{},
 	}
 }
 
@@ -77,7 +79,7 @@ func (c *Client) Dial(ctx context.Context, url string) error {
 	ws.SetReadLimit(c.opts.readLimit)
 
 	id := c.idGenerator.Next()
-	conn := newConn(id, resp.Request, ws)
+	conn := newConn(id, resp.Request, ws, c.opts.codec)
 	c.conn.Store(conn)
 
 	keeper := newKeeper(conn, c.mux)

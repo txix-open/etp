@@ -70,7 +70,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ws.SetReadLimit(s.opts.readLimit)
 
 	id := s.idGenerator.Next()
-	conn := newConn(id, r, ws)
+	conn := newConn(id, r, ws, s.opts.codec)
 
 	s.rooms.add(conn)
 	defer s.rooms.remove(conn)

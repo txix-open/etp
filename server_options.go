@@ -2,6 +2,7 @@ package etp
 
 import (
 	"github.com/coder/websocket"
+	"github.com/txix-open/etp/v4/msg"
 )
 
 const (
@@ -15,11 +16,13 @@ type ServerOption func(*serverOptions)
 type serverOptions struct {
 	acceptOptions *AcceptOptions
 	readLimit     int64
+	codec         msg.Codec
 }
 
 func defaultServerOptions() *serverOptions {
 	return &serverOptions{
 		readLimit: defaultReadLimit,
+		codec:     msg.NewLineCodec(),
 	}
 }
 
@@ -32,5 +35,11 @@ func WithServerAcceptOptions(opts *AcceptOptions) ServerOption {
 func WithServerReadLimit(limit int64) ServerOption {
 	return func(options *serverOptions) {
 		options.readLimit = limit
+	}
+}
+
+func WithServerCodec(codec msg.Codec) ServerOption {
+	return func(o *serverOptions) {
+		o.codec = codec
 	}
 }
