@@ -1,3 +1,7 @@
+### v4.1.0
+* extract `msg.Codec` iface
+* add `etp.WithClientCodec` `etp.WithServerCodec`
+* provide Godoc
 ### v4.0.0
 * change conn id type to string, generate it from `crypto/rand`
 ### v3.0.0

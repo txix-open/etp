@@ -36,7 +36,7 @@ func (k *keeper) readAndHandleMessage(ctx context.Context) error {
 		return err
 	}
 
-	event, err := msg.UnmarshalEvent(data)
+	event, err := k.conn.codec.UnmarshalEvent(data)
 	if err != nil {
 		k.mux.onError(k.conn, err)
 		return nil

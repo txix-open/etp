@@ -28,6 +28,7 @@ go get -u github.com/txix-open/etp/v4
 - WebSocket message
     - `websocket.MessageText` (not binary)
     - `<eventName>||<ackId>||<eventData>`
+    - can be overridden by custom `msg.Codec`
 - Each event is handled concurrently in separated goroutine
 - Message limit is `1MB` by default
 
@@ -142,7 +143,7 @@ func main() {
 }
 ```
 
-## V3 Migration
+## V4 Migration
 
 * Internal message format is the same as `v2`
 * Each event now is handled in separated goroutine (completely async)
@@ -168,4 +169,4 @@ srv.On("hello", etp.HandlerFunc(func(ctx context.Context, conn *etp.Conn, event 
 }))
 ```
 
-The second param now is a interface.
+The second param now is an interface.
