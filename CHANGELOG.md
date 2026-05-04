@@ -1,3 +1,5 @@
+### v4.1.1
+* `EncodeEvent` returns error
 ### v4.1.0
 * extract `msg.Codec` iface
 * add `etp.WithClientCodec` `etp.WithServerCodec`
