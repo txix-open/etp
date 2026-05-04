@@ -103,9 +103,12 @@ func (c *Conn) emit(ctx context.Context, event msg.Event) error {
 	buff := bpool.Get()
 	defer bpool.Put(buff)
 
-	c.codec.EncodeEvent(buff, event)
+	err := c.codec.EncodeEvent(buff, event)
+	if err != nil {
+		return fmt.Errorf("failed to encode event: %w", err)
+	}
 
-	err := c.ws.Write(ctx, websocket.MessageText, buff.Bytes())
+	err = c.ws.Write(ctx, websocket.MessageText, buff.Bytes())
 	if err != nil {
 		return fmt.Errorf("failed to write event: %w", err)
 	}

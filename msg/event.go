@@ -10,7 +10,7 @@ type Codec interface {
 	// UnmarshalEvent decodes event data from bytes.
 	UnmarshalEvent(data []byte) (Event, error)
 	// EncodeEvent encodes an event to bytes.
-	EncodeEvent(w *bytes.Buffer, event Event)
+	EncodeEvent(w *bytes.Buffer, event Event) error
 }
 
 // Event represents a communication event with a name, optional acknowledgment ID, and data payload.

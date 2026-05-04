@@ -51,7 +51,7 @@ func (LineCodec) UnmarshalEvent(data []byte) (Event, error) {
 }
 
 // EncodeEvent encodes an event to the line-based format.
-func (LineCodec) EncodeEvent(buff *bytes.Buffer, event Event) {
+func (LineCodec) EncodeEvent(buff *bytes.Buffer, event Event) error {
 	ackId := strconv.FormatInt(int64(event.AckId), 10)
 	buff.Grow(len(event.Name) + len(ackId) + len(event.Data) + len(delimiter)*2)
 	buff.WriteString(event.Name)
@@ -61,4 +61,5 @@ func (LineCodec) EncodeEvent(buff *bytes.Buffer, event Event) {
 		buff.Write(delimiter)
 		buff.Write(event.Data)
 	}
+	return nil
 }
