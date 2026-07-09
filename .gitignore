@@ -72,3 +72,5 @@ fabric.properties
 google/
 package.json
 yarn.lock
+
+.DS_Store
