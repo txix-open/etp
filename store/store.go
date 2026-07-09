@@ -36,6 +36,14 @@ func (s *Store) Get(key string) any {
 	return s.data[key]
 }
 
+// Delete removes a value by key.
+func (s *Store) Delete(key string) {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+
+	delete(s.data, key)
+}
+
 // Range iterates over all key-value pairs in the store.
 // The iteration stops if the function f returns false.
 func (s *Store) Range(f func(key string, value any) bool) {

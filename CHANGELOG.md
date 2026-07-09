@@ -1,3 +1,5 @@
+### v4.1.2
+* implement `Store.Delete`
 ### v4.1.1
 * `EncodeEvent` returns error
 ### v4.1.0
